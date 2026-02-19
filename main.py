@@ -3,7 +3,7 @@ class Vector:
         self.size = size
         self.data = [0] * size
 
-    def __getitem_(self,index):
+    def __getitem__(self,index):
         return self.data[index]
 
     def __len__(self):
@@ -11,10 +11,18 @@ class Vector:
     
     def __repr__(self):
         return f"{self.data}"
+    
+    def __add__(self,other):
+        if len(self)!=len(other):
+            raise ValueError("Vectors must be of the same size to be added.")
+        result = Vector(len(self))
+        for i in range(len(self)):
+            result.data[i] = self.data[i] + other.data[i]
+        return result
 
 def main():
     print("Hello,World!");
     testVec = Vector(5)
-    print(len(testVec))
+    
 
 main()
