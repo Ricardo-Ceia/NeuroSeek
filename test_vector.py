@@ -74,7 +74,19 @@ class TestVector(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = v1 - v2
 
+    def test_mul_two_vectors(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        result = v1 * v2
+        self.assertEqual(list(result.data), [4, 10, 18])
 
+    def test_mul_mismatched_sizes_raises(self):
+        v1 = Vector(3)
+        v2 = Vector(5)
+        with self.assertRaises(ValueError):
+            _ = v1 * v2
 
 if __name__ == "__main__":
     unittest.main()
