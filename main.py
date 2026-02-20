@@ -35,7 +35,15 @@ class Vector:
         for i in range(len(self)):
             result.data[i] = self.data[i] * other.data[i]
         return result
+    
 
+    def __dot__(self,other):
+        if len(self)!=len(other):
+            raise ValueError("Vectors must be the same size to apply dot product on them.")
+        result = 0
+        for i in range(len(self)):
+            result += self.data[i] * other.data[i]
+        return result
 
 def main():
     print("Hello,World!");
