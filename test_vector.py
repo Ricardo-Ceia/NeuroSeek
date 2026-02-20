@@ -54,11 +54,26 @@ class TestVector(unittest.TestCase):
         result = v1 + v2
         self.assertEqual(list(result.data), [5, 7, 9])
 
-    def test_add_mismatched_sizes_raises(self):
+    def test__mismatched_sizes_raises(self):
         v1 = Vector(3)
         v2 = Vector(5)
         with self.assertRaises(ValueError):
             _ = v1 + v2
+
+    def test_sub_two_vectors(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        result = v1 - v2
+        self.assertEqual(list(result.data), [-3, -3, -3])
+
+    def test_sub_mismatched_sizes_raises(self):
+        v1 = Vector(3)
+        v2 = Vector(5)
+        with self.assertRaises(ValueError):
+            _ = v1 - v2
+
 
 
 if __name__ == "__main__":

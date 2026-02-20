@@ -20,6 +20,14 @@ class Vector:
             result.data[i] = self.data[i] + other.data[i]
         return result
 
+    def __sub__(self,other):
+        if len(self)!=len(other):
+            raise ValueError("Vectors must be of the same size to be subtracted.")
+        result = Vector(len(self))
+        for i in range(len(self)):
+            result.data[i] = self.data[i] - other.data[i]
+        return result
+
 def main():
     print("Hello,World!");
     testVec = Vector(5)
