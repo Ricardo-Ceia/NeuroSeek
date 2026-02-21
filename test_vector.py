@@ -397,6 +397,66 @@ class TestVector(unittest.TestCase):
         v.data = [3, 4, 0]
         self.assertEqual(v.__norm__() ** 2, v.__dot__(v))
 
+    def test_eq_equal_vectors(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [1, 2, 3]
+        self.assertTrue(v1 == v2)
+
+    def test_eq_different_vectors(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [1, 2, 4]
+        self.assertFalse(v1 == v2)
+
+    def test_eq_different_sizes(self):
+        v1 = Vector(3)
+        v2 = Vector(5)
+        self.assertFalse(v1 == v2)
+
+    def test_eq_empty_vectors(self):
+        v1 = Vector(0)
+        v2 = Vector(0)
+        self.assertTrue(v1 == v2)
+
+    def test_eq_with_floats(self):
+        v1 = Vector(2)
+        v1.data = [1.5, 2.5]
+        v2 = Vector(2)
+        v2.data = [1.5, 2.5]
+        self.assertTrue(v1 == v2)
+
+    def test_eq_with_negatives(self):
+        v1 = Vector(3)
+        v1.data = [-1, -2, -3]
+        v2 = Vector(3)
+        v2.data = [-1, -2, -3]
+        self.assertTrue(v1 == v2)
+
+    def test_eq_same_vector(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        self.assertTrue(v == v)
+
+    def test_eq_non_vector_raises(self):
+        v = Vector(3)
+        with self.assertRaises(AttributeError):
+            _ = v == [1, 2, 3]
+
+    def test_nequal_vectors(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        self.assertTrue(v1 != v2)
+
+    def test_ne_different_sizes(self):
+        v1 = Vector(3)
+        v2 = Vector(5)
+        self.assertTrue(v1 != v2)
+
 
 if __name__ == "__main__":
     unittest.main()

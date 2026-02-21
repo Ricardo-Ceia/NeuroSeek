@@ -59,6 +59,14 @@ class Vector:
             result += self.data[i] ** 2
         return result ** 0.5
 
+    def __eq__(self,other):
+        if len(self)!=len(other):
+            return False
+        for i in range(len(self)):
+            if self.data[i]!=other.data[i]:
+                return False
+        return True
+
 def main():
     print("Hello,World!");
     testVec = Vector(5)
