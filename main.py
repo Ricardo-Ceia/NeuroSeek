@@ -4,7 +4,18 @@ class Vector:
         self.data = [0] * size
 
     def __getitem__(self,index):
+        if not isinstance(index, int):
+            raise TypeError(f"indices must be integers, not {type(index).__name__}")
+        if index < -len(self) or index >= len(self):
+            raise IndexError(f"index {index} out of range for vector of size {len(self)}")
         return self.data[index]
+    
+    def __setitem__(self,index,value):
+        if not isinstance(index, int):
+            raise TypeError(f"indices must be integers, not {type(index).__name__}")
+        if index < -len(self) or index >= len(self):
+            raise IndexError(f"index {index} out of range for vector of size {len(self)}")
+        self.data[index] = value
 
     def __len__(self):
         return self.size
@@ -13,6 +24,8 @@ class Vector:
         return f"{self.data}"
     
     def __add__(self,other):
+        if not isinstance(other, Vector):
+            raise TypeError(f"unsupported operand type(s) for +: 'Vector' and '{type(other).__name__}'")
         if len(self)!=len(other):
             raise ValueError("Vectors must be of the same size to be added.")
         result = Vector(len(self))
@@ -21,6 +34,8 @@ class Vector:
         return result
 
     def __sub__(self,other):
+        if not isinstance(other, Vector):
+            raise TypeError(f"unsupported operand type(s) for -: 'Vector' and '{type(other).__name__}'")
         if len(self)!=len(other):
             raise ValueError("Vectors must be of the same size to be subtracted.")
         result = Vector(len(self))
@@ -29,6 +44,8 @@ class Vector:
         return result
 
     def __mul__(self,other):
+        if not isinstance(other, Vector):
+            raise TypeError(f"unsupported operand type(s) for *: 'Vector' and '{type(other).__name__}'")
         if len(self)!=len(other):
             raise ValueError("Vectors must be of the same size to be multiplied.")
         result = Vector(len(self))
@@ -38,6 +55,8 @@ class Vector:
     
 
     def __dot__(self,other):
+        if not isinstance(other, Vector):
+            raise TypeError(f"unsupported operand type(s) for dot product: 'Vector' and '{type(other).__name__}'")
         if len(self)!=len(other):
             raise ValueError("Vectors must be the same size to apply dot product on them.")
         result = 0
@@ -60,6 +79,8 @@ class Vector:
         return result ** 0.5
 
     def __eq__(self,other):
+        if not isinstance(other, Vector):
+            raise TypeError(f"unsupported operand type(s) for ==: 'Vector' and '{type(other).__name__}'")
         if len(self)!=len(other):
             return False
         for i in range(len(self)):

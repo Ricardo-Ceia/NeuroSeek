@@ -129,7 +129,7 @@ class TestVector(unittest.TestCase):
 
     def test_add_non_vector_raises(self):
         v = Vector(3)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             _ = v + [1, 2, 3]
 
     def test_sub_two_vectors(self):
@@ -183,7 +183,7 @@ class TestVector(unittest.TestCase):
 
     def test_sub_non_vector_raises(self):
         v = Vector(3)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             _ = v - [1, 2, 3]
 
     def test_mul_two_vectors(self):
@@ -231,7 +231,7 @@ class TestVector(unittest.TestCase):
 
     def test_mul_non_vector_raises(self):
         v = Vector(3)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             _ = v * [1, 2, 3]
 
     def test_dot_basic(self):
@@ -282,7 +282,7 @@ class TestVector(unittest.TestCase):
 
     def test_dot_non_vector_raises(self):
         v = Vector(3)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             v.__dot__([1, 2, 3])
 
     def test_dot_single_element(self):
@@ -442,7 +442,7 @@ class TestVector(unittest.TestCase):
 
     def test_eq_non_vector_raises(self):
         v = Vector(3)
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             _ = v == [1, 2, 3]
 
     def test_nequal_vectors(self):
@@ -504,6 +504,58 @@ class TestVector(unittest.TestCase):
         v.data = [1, 2, 3]
         result = -(-v)
         self.assertEqual(list(result.data), [1, 2, 3])
+
+    def test_setitem_basic(self):
+        v = Vector(3)
+        v[0] = 5
+        self.assertEqual(v[0], 5)
+
+    def test_setitem_multiple(self):
+        v = Vector(3)
+        v[0] = 1
+        v[1] = 2
+        v[2] = 3
+        self.assertEqual(list(v.data), [1, 2, 3])
+
+    def test_setitem_negative_index(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        v[-1] = 5
+        self.assertEqual(v[2], 5)
+
+    def test_setitem_out_of_bounds_raises(self):
+        v = Vector(3)
+        with self.assertRaises(IndexError):
+            v[3] = 5
+        with self.assertRaises(IndexError):
+            v[10] = 5
+
+    def test_setitem_negative_out_of_bounds_raises(self):
+        v = Vector(3)
+        with self.assertRaises(IndexError):
+            v[-4] = 5
+
+    def test_setitem_invalid_type_index_raises(self):
+        v = Vector(3)
+        with self.assertRaises(TypeError):
+            v["a"] = 5
+        with self.assertRaises(TypeError):
+            v[1.5] = 5
+
+    def test_setitem_with_float(self):
+        v = Vector(2)
+        v[0] = 1.5
+        self.assertAlmostEqual(v[0], 1.5)
+
+    def test_setitem_with_negative(self):
+        v = Vector(2)
+        v[0] = -5
+        self.assertEqual(v[0], -5)
+
+    def test_setitem_empty_vector_raises(self):
+        v = Vector(0)
+        with self.assertRaises(IndexError):
+            v[0] = 5
 
 
 if __name__ == "__main__":
