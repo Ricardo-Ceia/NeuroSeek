@@ -457,6 +457,54 @@ class TestVector(unittest.TestCase):
         v2 = Vector(5)
         self.assertTrue(v1 != v2)
 
+    def test_neg_basic(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = -v
+        self.assertEqual(list(result.data), [-1, -2, -3])
+        self.assertIsInstance(result, Vector)
+
+    def test_neg_returns_vector_type(self):
+        v = Vector(3)
+        result = -v
+        self.assertIsInstance(result, Vector)
+
+    def test_neg_already_negative(self):
+        v = Vector(3)
+        v.data = [-1, -2, -3]
+        result = -v
+        self.assertEqual(list(result.data), [1, 2, 3])
+
+    def test_neg_with_zeros(self):
+        v = Vector(3)
+        v.data = [0, 0, 0]
+        result = -v
+        self.assertEqual(list(result.data), [0, 0, 0])
+
+    def test_neg_with_floats(self):
+        v = Vector(2)
+        v.data = [1.5, -2.5]
+        result = -v
+        self.assertAlmostEqual(result[0], -1.5)
+        self.assertAlmostEqual(result[1], 2.5)
+
+    def test_neg_empty_vector(self):
+        v = Vector(0)
+        result = -v
+        self.assertEqual(list(result.data), [])
+
+    def test_neg_single_element(self):
+        v = Vector(1)
+        v.data = [5]
+        result = -v
+        self.assertEqual(list(result.data), [-5])
+
+    def test_neg_double_negation(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = -(-v)
+        self.assertEqual(list(result.data), [1, 2, 3])
+
 
 if __name__ == "__main__":
     unittest.main()

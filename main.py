@@ -67,6 +67,12 @@ class Vector:
                 return False
         return True
 
+    def __neg__(self):
+        result=  Vector(len(self))
+        for i in range(len(self)):
+            result.data[i] = -self.data[i]
+        return result
+
 def main():
     print("Hello,World!");
     testVec = Vector(5)
