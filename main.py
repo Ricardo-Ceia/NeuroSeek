@@ -102,6 +102,19 @@ class Vector:
         if not isinstance(item, (int, float)):
             raise TypeError(f"unsupported operand type(s) for in: '{type(item).__name__}' and 'Vector'")
         return item in self.data
+    
+    def cosine_similarity(self,other):
+    #(v1, v2) = (v1 · v2) / (||v1|| * ||v2||)
+        if not isinstance(other,Vector):
+            raise TypeError(f"unsupported operand type(s) for cosine_similarity: 'Vector' and '{type(other).__name__}'")
+        if len(self)!=len(other):
+            raise ValueError("Vectors must be the same size to apply cosine similarity on them.")
+        dot_product = self.dot(other)
+        norm_self = self.norm()
+        norm_other = other.norm()
+        if norm_self == 0 or norm_other == 0: #x/0 tends to infinity 
+            raise ValueError("Cosine similarity is not defined for zero-length vectors.")
+        return dot_product / (norm_self * norm_other)
 
 def main():
     print("Hello,World!");

@@ -678,6 +678,103 @@ class TestVector(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = [1] in v
 
+    def test_cosine_similarity_identical(self):
+        v1 = Vector(2)
+        v1.data = [1, 0]
+        v2 = Vector(2)
+        v2.data = [1, 0]
+        self.assertEqual(v1.cosine_similarity(v2), 1.0)
+
+    def test_cosine_similarity_returns_scalar(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        result = v1.cosine_similarity(v2)
+        self.assertIsInstance(result, (int, float))
+        self.assertNotIsInstance(result, Vector)
+
+    def test_cosine_similarity_orthogonal(self):
+        v1 = Vector(2)
+        v1.data = [1, 0]
+        v2 = Vector(2)
+        v2.data = [0, 1]
+        self.assertEqual(v1.cosine_similarity(v2), 0.0)
+
+    def test_cosine_similarity_opposite(self):
+        v1 = Vector(2)
+        v1.data = [1, 0]
+        v2 = Vector(2)
+        v2.data = [-1, 0]
+        self.assertEqual(v1.cosine_similarity(v2), -1.0)
+
+    def test_cosine_similarity_with_floats(self):
+        v1 = Vector(2)
+        v1.data = [1.5, 2.5]
+        v2 = Vector(2)
+        v2.data = [3.0, 4.0]
+        result = v1.cosine_similarity(v2)
+        self.assertAlmostEqual(result, 0.9947, places=3)
+
+    def test_cosine_similarity_different_sizes_raises(self):
+        v1 = Vector(3)
+        v2 = Vector(5)
+        with self.assertRaises(ValueError):
+            v1.cosine_similarity(v2)
+
+    def test_cosine_similarity_zero_vector_raises(self):
+        v1 = Vector(3)
+        v1.data = [0, 0, 0]
+        v2 = Vector(3)
+        v2.data = [1, 2, 3]
+        with self.assertRaises(ValueError):
+            v1.cosine_similarity(v2)
+
+    def test_cosine_similarity_both_zero_vectors_raises(self):
+        v1 = Vector(3)
+        v1.data = [0, 0, 0]
+        v2 = Vector(3)
+        v2.data = [0, 0, 0]
+        with self.assertRaises(ValueError):
+            v1.cosine_similarity(v2)
+
+    def test_cosine_similarity_non_vector_raises(self):
+        v = Vector(3)
+        with self.assertRaises(TypeError):
+            v.cosine_similarity([1, 2, 3])
+
+    def test_cosine_similarity_45_degrees(self):
+        v1 = Vector(2)
+        v1.data = [1, 1]
+        v2 = Vector(2)
+        v2.data = [1, 0]
+        result = v1.cosine_similarity(v2)
+        self.assertAlmostEqual(result, 0.7071, places=3)
+
+    def test_cosine_similarity_with_negatives(self):
+        v1 = Vector(2)
+        v1.data = [1, -1]
+        v2 = Vector(2)
+        v2.data = [-1, 1]
+        self.assertAlmostEqual(v1.cosine_similarity(v2), -1.0)
+
+    def test_cosine_similarity_single_element(self):
+        v1 = Vector(1)
+        v1.data = [3]
+        v2 = Vector(1)
+        v2.data = [4]
+        self.assertEqual(v1.cosine_similarity(v2), 1.0)
+
+    def test_cosine_similarity_matches_formula(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        dot = v1.dot(v2)
+        norms = v1.norm() * v2.norm()
+        expected = dot / norms
+        self.assertEqual(v1.cosine_similarity(v2), expected)
+
 
 if __name__ == "__main__":
     unittest.main()
