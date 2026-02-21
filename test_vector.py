@@ -347,6 +347,56 @@ class TestVector(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = "string" * v
 
+    def test_norm_basic(self):
+        v = Vector(2)
+        v.data = [3, 4]
+        self.assertEqual(v.__norm__(), 5.0)
+
+    def test_norm_returns_scalar(self):
+        v = Vector(3)
+        result = v.__norm__()
+        self.assertIsInstance(result, (int, float))
+        self.assertNotIsInstance(result, Vector)
+
+    def test_norm_zero_vector(self):
+        v = Vector(3)
+        v.data = [0, 0, 0]
+        self.assertEqual(v.__norm__(), 0)
+
+    def test_norm_with_negatives(self):
+        v = Vector(3)
+        v.data = [-3, -4, 0]
+        self.assertEqual(v.__norm__(), 5.0)
+
+    def test_norm_with_floats(self):
+        v = Vector(2)
+        v.data = [1.5, 2.0]
+        self.assertAlmostEqual(v.__norm__(), 2.5)
+
+    def test_norm_empty_vector(self):
+        v = Vector(0)
+        self.assertEqual(v.__norm__(), 0)
+
+    def test_norm_single_element(self):
+        v = Vector(1)
+        v.data = [5]
+        self.assertEqual(v.__norm__(), 5.0)
+
+    def test_norm_single_element_zero(self):
+        v = Vector(1)
+        v.data = [0]
+        self.assertEqual(v.__norm__(), 0.0)
+
+    def test_norm_larger_vector(self):
+        v = Vector(4)
+        v.data = [1, 2, 2, 4]
+        self.assertAlmostEqual(v.__norm__(), 5.0)
+
+    def test_norm_uses_dot_product(self):
+        v = Vector(3)
+        v.data = [3, 4, 0]
+        self.assertEqual(v.__norm__() ** 2, v.__dot__(v))
+
 
 if __name__ == "__main__":
     unittest.main()

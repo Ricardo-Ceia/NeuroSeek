@@ -53,6 +53,12 @@ class Vector:
             result.data[i] = self.data[i] * scalar
         return result
 
+    def __norm__(self):
+        result = 0
+        for i in range(len(self)):
+            result += self.data[i] ** 2
+        return result ** 0.5
+
 def main():
     print("Hello,World!");
     testVec = Vector(5)
