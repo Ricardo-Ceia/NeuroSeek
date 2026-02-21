@@ -239,12 +239,12 @@ class TestVector(unittest.TestCase):
         v1.data = [1, 2, 3]
         v2 = Vector(3)
         v2.data = [4, 5, 6]
-        self.assertEqual(v1.__dot__(v2), 32)
+        self.assertEqual(v1.dot(v2), 32)
 
     def test_dot_returns_scalar(self):
         v1 = Vector(3)
         v2 = Vector(3)
-        result = v1.__dot__(v2)
+        result = v1.dot(v2)
         self.assertIsInstance(result, (int, float))
         self.assertNotIsInstance(result, Vector)
 
@@ -253,57 +253,78 @@ class TestVector(unittest.TestCase):
         v1.data = [0, 0, 0]
         v2 = Vector(3)
         v2.data = [1, 2, 3]
-        self.assertEqual(v1.__dot__(v2), 0)
+        self.assertEqual(v1.dot(v2), 0)
 
     def test_dot_with_negatives(self):
         v1 = Vector(3)
         v1.data = [-1, 2, -3]
         v2 = Vector(3)
         v2.data = [4, -5, 6]
-        self.assertEqual(v1.__dot__(v2), -32)
+        self.assertEqual(v1.dot(v2), -32)
 
     def test_dot_with_floats(self):
         v1 = Vector(2)
         v1.data = [1.5, 2.5]
         v2 = Vector(2)
         v2.data = [2.0, 3.0]
-        self.assertAlmostEqual(v1.__dot__(v2), 10.5)
+        self.assertAlmostEqual(v1.dot(v2), 10.5)
 
     def test_dot_empty_vectors(self):
         v1 = Vector(0)
         v2 = Vector(0)
-        self.assertEqual(v1.__dot__(v2), 0)
+        self.assertEqual(v1.dot(v2), 0)
 
     def test_dot_mismatched_sizes_raises(self):
         v1 = Vector(3)
         v2 = Vector(5)
         with self.assertRaises(ValueError):
-            v1.__dot__(v2)
+            v1.dot(v2)
 
     def test_dot_non_vector_raises(self):
         v = Vector(3)
         with self.assertRaises(TypeError):
-            v.__dot__([1, 2, 3])
+            v.dot([1, 2, 3])
 
     def test_dot_single_element(self):
         v1 = Vector(1)
         v1.data = [5]
         v2 = Vector(1)
         v2.data = [3]
-        self.assertEqual(v1.__dot__(v2), 15)
+        self.assertEqual(v1.dot(v2), 15)
 
     def test_dot_orthogonal_vectors(self):
         v1 = Vector(3)
         v1.data = [1, 0, 0]
         v2 = Vector(3)
         v2.data = [0, 1, 0]
-        self.assertEqual(v1.__dot__(v2), 0)
+        self.assertEqual(v1.dot(v2), 0)
 
     def test_dot_same_vector_squared(self):
         v = Vector(3)
         v.data = [3, 4, 0]
-        result = v.__dot__(v)
+        result = v.dot(v)
         self.assertEqual(result, 25)
+
+    def test_matmul_basic(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        result = v1 @ v2
+        self.assertEqual(result, 32)
+
+    def test_matmul_returns_same_as_dot(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        self.assertEqual(v1 @ v2, v1.dot(v2))
+
+    def test_matmul_mismatched_sizes_raises(self):
+        v1 = Vector(3)
+        v2 = Vector(5)
+        with self.assertRaises(ValueError):
+            _ = v1 @ v2
 
     def test_rmul_scalar_on_left(self):
         v = Vector(3)
@@ -350,52 +371,52 @@ class TestVector(unittest.TestCase):
     def test_norm_basic(self):
         v = Vector(2)
         v.data = [3, 4]
-        self.assertEqual(v.__norm__(), 5.0)
+        self.assertEqual(v.norm(), 5.0)
 
     def test_norm_returns_scalar(self):
         v = Vector(3)
-        result = v.__norm__()
+        result = v.norm()
         self.assertIsInstance(result, (int, float))
         self.assertNotIsInstance(result, Vector)
 
     def test_norm_zero_vector(self):
         v = Vector(3)
         v.data = [0, 0, 0]
-        self.assertEqual(v.__norm__(), 0)
+        self.assertEqual(v.norm(), 0)
 
     def test_norm_with_negatives(self):
         v = Vector(3)
         v.data = [-3, -4, 0]
-        self.assertEqual(v.__norm__(), 5.0)
+        self.assertEqual(v.norm(), 5.0)
 
     def test_norm_with_floats(self):
         v = Vector(2)
         v.data = [1.5, 2.0]
-        self.assertAlmostEqual(v.__norm__(), 2.5)
+        self.assertAlmostEqual(v.norm(), 2.5)
 
     def test_norm_empty_vector(self):
         v = Vector(0)
-        self.assertEqual(v.__norm__(), 0)
+        self.assertEqual(v.norm(), 0)
 
     def test_norm_single_element(self):
         v = Vector(1)
         v.data = [5]
-        self.assertEqual(v.__norm__(), 5.0)
+        self.assertEqual(v.norm(), 5.0)
 
     def test_norm_single_element_zero(self):
         v = Vector(1)
         v.data = [0]
-        self.assertEqual(v.__norm__(), 0.0)
+        self.assertEqual(v.norm(), 0.0)
 
     def test_norm_larger_vector(self):
         v = Vector(4)
         v.data = [1, 2, 2, 4]
-        self.assertAlmostEqual(v.__norm__(), 5.0)
+        self.assertAlmostEqual(v.norm(), 5.0)
 
     def test_norm_uses_dot_product(self):
         v = Vector(3)
         v.data = [3, 4, 0]
-        self.assertEqual(v.__norm__() ** 2, v.__dot__(v))
+        self.assertEqual(v.norm() ** 2, v.dot(v))
 
     def test_eq_equal_vectors(self):
         v1 = Vector(3)

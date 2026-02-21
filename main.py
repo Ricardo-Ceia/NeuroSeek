@@ -54,15 +54,18 @@ class Vector:
         return result
     
 
-    def __dot__(self,other):
+    def dot(self, other):
         if not isinstance(other, Vector):
             raise TypeError(f"unsupported operand type(s) for dot product: 'Vector' and '{type(other).__name__}'")
-        if len(self)!=len(other):
+        if len(self) != len(other):
             raise ValueError("Vectors must be the same size to apply dot product on them.")
         result = 0
         for i in range(len(self)):
             result += self.data[i] * other.data[i]
         return result
+
+    def __matmul__(self, other):
+        return self.dot(other)
     
     def __rmul__(self, scalar):
         if not isinstance(scalar, (int, float)):
@@ -72,7 +75,7 @@ class Vector:
             result.data[i] = self.data[i] * scalar
         return result
 
-    def __norm__(self):
+    def norm(self):
         result = 0
         for i in range(len(self)):
             result += self.data[i] ** 2
