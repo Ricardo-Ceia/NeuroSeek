@@ -605,6 +605,55 @@ class TestVector(unittest.TestCase):
         self.assertEqual(next(it1), 2)
         self.assertEqual(next(it2), 2)
 
+    def test_contains_basic(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        self.assertTrue(2 in v)
+        self.assertTrue(1 in v)
+        self.assertTrue(3 in v)
+
+    def test_contains_not_present(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        self.assertFalse(5 in v)
+        self.assertFalse(0 in v)
+
+    def test_contains_with_zeros(self):
+        v = Vector(3)
+        v.data = [0, 0, 0]
+        self.assertTrue(0 in v)
+        self.assertFalse(1 in v)
+
+    def test_contains_with_floats(self):
+        v = Vector(3)
+        v.data = [1.5, 2.5, 3.5]
+        self.assertTrue(2.5 in v)
+        self.assertFalse(1.0 in v)
+
+    def test_contains_with_negatives(self):
+        v = Vector(3)
+        v.data = [-1, 0, 1]
+        self.assertTrue(-1 in v)
+        self.assertTrue(0 in v)
+        self.assertFalse(-2 in v)
+
+    def test_contains_empty_vector(self):
+        v = Vector(0)
+        self.assertFalse(1 in v)
+
+    def test_contains_single_element(self):
+        v = Vector(1)
+        v.data = [5]
+        self.assertTrue(5 in v)
+        self.assertFalse(3 in v)
+
+    def test_contains_invalid_type_raises(self):
+        v = Vector(3)
+        with self.assertRaises(TypeError):
+            _ = "a" in v
+        with self.assertRaises(TypeError):
+            _ = [1] in v
+
 
 if __name__ == "__main__":
     unittest.main()

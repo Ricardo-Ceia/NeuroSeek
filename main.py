@@ -97,6 +97,11 @@ class Vector:
     def __iter__(self):
         return iter(self.data)
 
+    def __contains__(self,item):
+        if not isinstance(item, (int, float)):
+            raise TypeError(f"unsupported operand type(s) for in: '{type(item).__name__}' and 'Vector'")
+        return item in self.data
+
 def main():
     print("Hello,World!");
     testVec = Vector(5)
