@@ -305,6 +305,48 @@ class TestVector(unittest.TestCase):
         result = v.__dot__(v)
         self.assertEqual(result, 25)
 
+    def test_rmul_scalar_on_left(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = 3 * v
+        self.assertEqual(list(result.data), [3, 6, 9])
+        self.assertIsInstance(result, Vector)
+
+    def test_rmul_returns_vector_type(self):
+        v = Vector(3)
+        result = 2 * v
+        self.assertIsInstance(result, Vector)
+
+    def test_rmul_with_zero(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = 0 * v
+        self.assertEqual(list(result.data), [0, 0, 0])
+
+    def test_rmul_with_negative(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = -2 * v
+        self.assertEqual(list(result.data), [-2, -4, -6])
+
+    def test_rmul_with_float(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = 0.5 * v
+        self.assertAlmostEqual(result[0], 0.5)
+        self.assertAlmostEqual(result[1], 1.0)
+        self.assertAlmostEqual(result[2], 1.5)
+
+    def test_rmul_empty_vector(self):
+        v = Vector(0)
+        result = 5 * v
+        self.assertEqual(list(result.data), [])
+
+    def test_rmul_non_numeric_raises(self):
+        v = Vector(3)
+        with self.assertRaises(TypeError):
+            _ = "string" * v
+
 
 if __name__ == "__main__":
     unittest.main()

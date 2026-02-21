@@ -44,6 +44,14 @@ class Vector:
         for i in range(len(self)):
             result += self.data[i] * other.data[i]
         return result
+    
+    def __rmul__(self, scalar):
+        if not isinstance(scalar, (int, float)):
+            raise TypeError(f"unsupported operand type(s) for *: '{type(scalar).__name__}' and 'Vector'")
+        result = Vector(len(self))
+        for i in range(len(self)):
+            result.data[i] = self.data[i] * scalar
+        return result
 
 def main():
     print("Hello,World!");
