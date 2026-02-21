@@ -234,6 +234,52 @@ class TestVector(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = v * [1, 2, 3]
 
+    def test_mul_scalar_on_right(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = v * 3
+        self.assertEqual(list(result.data), [3, 6, 9])
+        self.assertIsInstance(result, Vector)
+
+    def test_mul_scalar_with_zero(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = v * 0
+        self.assertEqual(list(result.data), [0, 0, 0])
+
+    def test_mul_scalar_with_negative(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = v * -2
+        self.assertEqual(list(result.data), [-2, -4, -6])
+
+    def test_mul_scalar_with_float(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = v * 0.5
+        self.assertAlmostEqual(result[0], 0.5)
+        self.assertAlmostEqual(result[1], 1.0)
+        self.assertAlmostEqual(result[2], 1.5)
+
+    def test_mul_scalar_empty_vector(self):
+        v = Vector(0)
+        result = v * 5
+        self.assertEqual(list(result.data), [])
+
+    def test_mul_scalar_single_element(self):
+        v = Vector(1)
+        v.data = [5]
+        result = v * 3
+        self.assertEqual(list(result.data), [15])
+
+    def test_mul_scalar_and_vector_both_work(self):
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [2, 2, 2]
+        self.assertEqual(list((v1 * 2).data), [2, 4, 6])
+        self.assertEqual(list((v1 * v2).data), [2, 4, 6])
+
     def test_dot_basic(self):
         v1 = Vector(3)
         v1.data = [1, 2, 3]
@@ -325,49 +371,6 @@ class TestVector(unittest.TestCase):
         v2 = Vector(5)
         with self.assertRaises(ValueError):
             _ = v1 @ v2
-
-    def test_rmul_scalar_on_left(self):
-        v = Vector(3)
-        v.data = [1, 2, 3]
-        result = 3 * v
-        self.assertEqual(list(result.data), [3, 6, 9])
-        self.assertIsInstance(result, Vector)
-
-    def test_rmul_returns_vector_type(self):
-        v = Vector(3)
-        result = 2 * v
-        self.assertIsInstance(result, Vector)
-
-    def test_rmul_with_zero(self):
-        v = Vector(3)
-        v.data = [1, 2, 3]
-        result = 0 * v
-        self.assertEqual(list(result.data), [0, 0, 0])
-
-    def test_rmul_with_negative(self):
-        v = Vector(3)
-        v.data = [1, 2, 3]
-        result = -2 * v
-        self.assertEqual(list(result.data), [-2, -4, -6])
-
-    def test_rmul_with_float(self):
-        v = Vector(3)
-        v.data = [1, 2, 3]
-        result = 0.5 * v
-        self.assertAlmostEqual(result[0], 0.5)
-        self.assertAlmostEqual(result[1], 1.0)
-        self.assertAlmostEqual(result[2], 1.5)
-
-    def test_rmul_empty_vector(self):
-        v = Vector(0)
-        result = 5 * v
-        self.assertEqual(list(result.data), [])
-
-    def test_rmul_non_numeric_raises(self):
-        v = Vector(3)
-        with self.assertRaises(TypeError):
-            _ = "string" * v
-
     def test_norm_basic(self):
         v = Vector(2)
         v.data = [3, 4]

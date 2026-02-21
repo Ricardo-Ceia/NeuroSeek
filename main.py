@@ -43,15 +43,21 @@ class Vector:
             result.data[i] = self.data[i] - other.data[i]
         return result
 
-    def __mul__(self,other):
-        if not isinstance(other, Vector):
+    def __mul__(self, other):
+        if isinstance(other, (int, float)):
+            result = Vector(len(self))
+            for i in range(len(self)):
+                result.data[i] = self.data[i] * other
+            return result
+        elif isinstance(other, Vector):
+            if len(self) != len(other):
+                raise ValueError("Vectors must be of the same size to be multiplied.")
+            result = Vector(len(self))
+            for i in range(len(self)):
+                result.data[i] = self.data[i] * other.data[i]
+            return result
+        else:
             raise TypeError(f"unsupported operand type(s) for *: 'Vector' and '{type(other).__name__}'")
-        if len(self)!=len(other):
-            raise ValueError("Vectors must be of the same size to be multiplied.")
-        result = Vector(len(self))
-        for i in range(len(self)):
-            result.data[i] = self.data[i] * other.data[i]
-        return result
     
 
     def dot(self, other):
@@ -67,14 +73,6 @@ class Vector:
     def __matmul__(self, other):
         return self.dot(other)
     
-    def __rmul__(self, scalar):
-        if not isinstance(scalar, (int, float)):
-            raise TypeError(f"unsupported operand type(s) for *: '{type(scalar).__name__}' and 'Vector'")
-        result = Vector(len(self))
-        for i in range(len(self)):
-            result.data[i] = self.data[i] * scalar
-        return result
-
     def norm(self):
         result = 0
         for i in range(len(self)):
