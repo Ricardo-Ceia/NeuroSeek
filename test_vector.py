@@ -557,6 +557,54 @@ class TestVector(unittest.TestCase):
         with self.assertRaises(IndexError):
             v[0] = 5
 
+    def test_iter_basic(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        result = list(v)
+        self.assertEqual(result, [1, 2, 3])
+
+    def test_iter_with_for_loop(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        collected = []
+        for x in v:
+            collected.append(x)
+        self.assertEqual(collected, [1, 2, 3])
+
+    def test_iter_empty_vector(self):
+        v = Vector(0)
+        result = list(v)
+        self.assertEqual(result, [])
+
+    def test_iter_single_element(self):
+        v = Vector(1)
+        v.data = [5]
+        result = list(v)
+        self.assertEqual(result, [5])
+
+    def test_iter_with_floats(self):
+        v = Vector(2)
+        v.data = [1.5, 2.5]
+        result = list(v)
+        self.assertAlmostEqual(result[0], 1.5)
+        self.assertAlmostEqual(result[1], 2.5)
+
+    def test_iter_with_negatives(self):
+        v = Vector(3)
+        v.data = [-1, 0, 1]
+        result = list(v)
+        self.assertEqual(result, [-1, 0, 1])
+
+    def test_iter_multiple_iterations(self):
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        it1 = iter(v)
+        it2 = iter(v)
+        self.assertEqual(next(it1), 1)
+        self.assertEqual(next(it2), 1)
+        self.assertEqual(next(it1), 2)
+        self.assertEqual(next(it2), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

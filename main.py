@@ -93,6 +93,9 @@ class Vector:
         for i in range(len(self)):
             result.data[i] = -self.data[i]
         return result
+    
+    def __iter__(self):
+        return iter(self.data)
 
 def main():
     print("Hello,World!");
