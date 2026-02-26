@@ -1,5 +1,5 @@
 import unittest
-from main import Vector, Index
+from main import Vector
 
 
 class TestVector(unittest.TestCase):
