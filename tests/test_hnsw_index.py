@@ -72,6 +72,44 @@ class TestHNSWIndex(unittest.TestCase):
         with self.assertRaises(ValueError):
             idx.add_vector(v2, id=1)
 
+    def test_get_vector_basic(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, id=1)
+        retrieved = idx.get_vector(1)
+        self.assertIsInstance(retrieved, Vector)
+        self.assertEqual(list(retrieved.data), [1, 2, 3])
+
+    def test_get_vector_multiple(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        for i in range(5):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, id=i)
+        retrieved = idx.get_vector(3)
+        self.assertEqual(list(retrieved.data), [3, 4])
+
+    def test_get_vector_nonexistent_raises(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, id=1)
+        with self.assertRaises(ValueError):
+            idx.get_vector(999)
+
+    def test_get_vector_invalid_type_raises(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, id=1)
+        with self.assertRaises(TypeError):
+            idx.get_vector("abc")
+
     def test_search_basic(self):
         random.seed(42)
         idx = HNSWIndex()

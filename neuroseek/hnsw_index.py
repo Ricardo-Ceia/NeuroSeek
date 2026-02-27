@@ -102,6 +102,15 @@ class HNSWIndex:
 
         return id
 
+    def get_vector(self, id):
+        if not isinstance(id, int):
+            raise TypeError(f"id must be an int, not {type(id).__name__}")
+
+        if id not in self.id_to_node:
+            raise ValueError(f"ID {id} does not exist")
+
+        return self.id_to_node[id].vector
+
     def search(self, query, top_k=5, ef=10):
         if not isinstance(query, Vector):
             raise TypeError(f"query must be a Vector, not {type(query).__name__}")
