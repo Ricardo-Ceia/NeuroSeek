@@ -26,7 +26,27 @@ class Index:
         index = len(self.vectors)
         self.vectors.append((id, vector))
         self.id_to_index[id] = index
+    
+    def delete_vector(self, id=None):
+        if id is None:
+            raise ValueError("ID must be provided for deletion")
 
+        if not isinstance(id, int):
+            raise TypeError(f"unsupported operand type(s) for delete_vector: 'Index' and '{type(id).__name__}'")
+
+        if id not in self.id_to_index:
+            raise ValueError(f"ID {id} does not exist in index")
+
+        index = self.id_to_index[id]
+        deleted_vector = self.vectors[index]
+        del self.vectors[index]
+        del self.id_to_index[id]
+
+        for i in range(index, len(self.vectors)):
+            self.id_to_index[self.vectors[i][0]] = i
+
+        return deleted_vector
+        
     def search(self, query_vector, top_k=5):
         if not isinstance(query_vector, Vector):
             raise TypeError(f"unsupported operand type(s) for search: 'Index' and '{type(query_vector).__name__}'")

@@ -233,6 +233,83 @@ class TestIndex(unittest.TestCase):
         results = idx.search(query, 0)
         self.assertEqual(results, [])
 
+    def test_delete_vector_basic(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        deleted = idx.delete_vector(1)
+        self.assertEqual(deleted[0], 1)
+        self.assertEqual(len(idx.vectors), 0)
+
+    def test_delete_vector_updates_id_to_index(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        idx.add_vector(v2, 2)
+        idx.delete_vector(1)
+        self.assertEqual(idx.id_to_index[2], 0)
+
+    def test_delete_vector_middle_element(self):
+        idx = Index()
+        for i in range(5):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, i)
+        idx.delete_vector(2)
+        self.assertEqual(len(idx.vectors), 4)
+        self.assertEqual(idx.id_to_index[3], 2)
+
+    def test_delete_vector_nonexistent_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        with self.assertRaises(ValueError):
+            idx.delete_vector(999)
+
+    def test_delete_vector_no_id_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        with self.assertRaises(ValueError):
+            idx.delete_vector(None)
+
+    def test_delete_vector_invalid_type_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        with self.assertRaises(TypeError):
+            idx.delete_vector("abc")
+
+    def test_delete_vector_from_empty_index_raises(self):
+        idx = Index()
+        with self.assertRaises(ValueError):
+            idx.delete_vector(1)
+
+    def test_delete_vector_returns_vector(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        deleted = idx.delete_vector(1)
+        self.assertIsInstance(deleted[1], Vector)
+
+    def test_delete_last_vector(self):
+        idx = Index()
+        for i in range(3):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, i)
+        idx.delete_vector(2)
+        self.assertEqual(len(idx.vectors), 2)
+        self.assertNotIn(2, idx.id_to_index)
+
 
 if __name__ == "__main__":
     unittest.main()
