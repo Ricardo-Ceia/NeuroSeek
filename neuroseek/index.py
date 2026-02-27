@@ -26,3 +26,29 @@ class Index:
         index = len(self.vectors)
         self.vectors.append((id, vector))
         self.id_to_index[id] = index
+
+    def search(self, query_vector, top_k=5):
+        if not isinstance(query_vector, Vector):
+            raise TypeError(f"unsupported operand type(s) for search: 'Index' and '{type(query_vector).__name__}'")
+        
+        if not isinstance(top_k, int):
+            raise TypeError(f"top_k must be an integer, not {type(top_k).__name__}")
+        
+        if top_k < 0:
+            raise ValueError(f"top_k must be non-negative, got {top_k}")
+        
+        if not self.vectors:
+            return []
+        
+        if len(query_vector) == 0:
+            raise ValueError("Cannot search with empty query vector")
+
+        similarities = []
+        for id, vector in self.vectors:
+            if len(query_vector) != len(vector):
+                raise ValueError(f"Query vector dimension {len(query_vector)} does not match stored vector dimension {len(vector)}")
+            similarity = query_vector.cosine_similarity(vector)
+            similarities.append((id, similarity))
+
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return similarities[:top_k]

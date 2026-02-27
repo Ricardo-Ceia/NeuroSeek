@@ -88,6 +88,151 @@ class TestIndex(unittest.TestCase):
         idx.add_vector(v2)
         self.assertEqual(idx.vectors[1][0], 1)
 
+    def test_search_basic(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 0, 0]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [0, 1, 0]
+        idx.add_vector(v2, 2)
+        query = Vector(3)
+        query.data = [1, 0, 0]
+        results = idx.search(query, 2)
+        self.assertEqual(results[0][0], 1)
+        self.assertEqual(results[0][1], 1.0)
+
+    def test_search_returns_of_tuples(self):
+        idx = Index()
+        v = Vector(2)
+        v.data = [1, 0]
+        idx.add_vector(v, 1)
+        query = Vector(2)
+        query.data = [1, 0]
+        results = idx.search(query, 1)
+        self.assertIsInstance(results, list)
+        self.assertIsInstance(results[0], tuple)
+
+    def test_search_sorted_by_similarity(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 0, 0]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [0, 1, 0]
+        idx.add_vector(v2, 2)
+        query = Vector(3)
+        query.data = [1, 0, 0]
+        results = idx.search(query, 2)
+        self.assertGreaterEqual(results[0][1], results[1][1])
+
+    def test_search_top_k_less_than_total(self):
+        idx = Index()
+        for i in range(10):
+            v = Vector(2)
+            v.data = [i + 1, i + 2]
+            idx.add_vector(v, i)
+        query = Vector(2)
+        query.data = [1, 2]
+        results = idx.search(query, 3)
+        self.assertEqual(len(results), 3)
+
+    def test_search_top_k_greater_than_total(self):
+        idx = Index()
+        for i in range(3):
+            v = Vector(2)
+            v.data = [i + 1, i + 2]
+            idx.add_vector(v, i)
+        query = Vector(2)
+        query.data = [1, 2]
+        results = idx.search(query, 10)
+        self.assertEqual(len(results), 3)
+
+    def test_search_empty_index(self):
+        idx = Index()
+        query = Vector(3)
+        query.data = [1, 0, 0]
+        results = idx.search(query, 5)
+        self.assertEqual(results, [])
+
+    def test_search_non_vector_query_raises(self):
+        idx = Index()
+        with self.assertRaises(TypeError):
+            idx.search([1, 2, 3], 5)
+
+    def test_search_invalid_top_k_type_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        query = Vector(3)
+        query.data = [1, 0, 0]
+        with self.assertRaises(TypeError):
+            idx.search(query, "5")
+
+    def test_search_negative_top_k_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        query = Vector(3)
+        query.data = [1, 0, 0]
+        with self.assertRaises(ValueError):
+            idx.search(query, -1)
+
+    def test_search_dimension_mismatch_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        query = Vector(2)
+        query.data = [1, 0]
+        with self.assertRaises(ValueError):
+            idx.search(query, 5)
+
+    def test_search_empty_query_vector_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        query = Vector(0)
+        with self.assertRaises(ValueError):
+            idx.search(query, 5)
+
+    def test_search_identical_vectors(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        query = Vector(3)
+        query.data = [1, 2, 3]
+        results = idx.search(query, 1)
+        self.assertEqual(results[0][0], 1)
+        self.assertEqual(results[0][1], 1.0)
+
+    def test_search_orthogonal_vectors(self):
+        idx = Index()
+        v1 = Vector(2)
+        v1.data = [1, 0]
+        idx.add_vector(v1, 1)
+        v2 = Vector(2)
+        v2.data = [0, 1]
+        idx.add_vector(v2, 2)
+        query = Vector(2)
+        query.data = [1, 0]
+        results = idx.search(query, 2)
+        self.assertEqual(results[1][1], 0.0)
+
+    def test_search_top_k_zero(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        query = Vector(3)
+        query.data = [1, 0, 0]
+        results = idx.search(query, 0)
+        self.assertEqual(results, [])
+
 
 if __name__ == "__main__":
     unittest.main()
