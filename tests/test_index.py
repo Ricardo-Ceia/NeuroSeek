@@ -88,6 +88,24 @@ class TestIndex(unittest.TestCase):
         idx.add_vector(v2)
         self.assertEqual(idx.vectors[1][0], 1)
 
+    def test_add_vector_returns_provided_id(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        returned_id = idx.add_vector(v, 42)
+        self.assertEqual(returned_id, 42)
+
+    def test_add_vector_returns_auto_generated_id(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        id1 = idx.add_vector(v1)
+        id2 = idx.add_vector(v2)
+        self.assertEqual(id1, 0)
+        self.assertEqual(id2, 1)
+
     def test_search_basic(self):
         idx = Index()
         v1 = Vector(3)

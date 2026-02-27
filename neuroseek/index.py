@@ -26,6 +26,7 @@ class Index:
         index = len(self.vectors)
         self.vectors.append((id, vector))
         self.id_to_index[id] = index
+        return id
     
     def delete_vector(self, id=None):
         if id is None:
