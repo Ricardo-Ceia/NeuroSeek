@@ -111,6 +111,34 @@ class HNSWIndex:
 
         return self.id_to_node[id].vector
 
+    def delete_vector(self, id):
+        if not isinstance(id, int):
+            raise TypeError(f"id must be an int, not {type(id).__name__}")
+
+        if id not in self.id_to_node:
+            raise ValueError(f"ID {id} does not exist")
+
+        node = self.id_to_node[id]
+
+        for layer in range(node.layer + 1):
+            if layer < len(self.layers) and id in self.layers[layer]:
+                del self.layers[layer][id]
+
+        for neighbor_id, neighbor_node in self.id_to_node.items():
+            for layer in neighbor_node.connections:
+                neighbor_node.connections[layer] = [
+                    (nid, dist) for nid, dist in neighbor_node.connections[layer]
+                    if nid != id
+                ]
+
+        del self.id_to_node[id]
+        self.num_vectors -= 1
+
+        if self.entry_point and self.entry_point.id == id:
+            self.entry_point = None
+
+        return node.vector
+
     def search(self, query, top_k=5, ef=10):
         if not isinstance(query, Vector):
             raise TypeError(f"query must be a Vector, not {type(query).__name__}")

@@ -110,6 +110,49 @@ class TestHNSWIndex(unittest.TestCase):
         with self.assertRaises(TypeError):
             idx.get_vector("abc")
 
+    def test_delete_vector_basic(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, id=1)
+        deleted = idx.delete_vector(1)
+        self.assertIsInstance(deleted, Vector)
+        self.assertEqual(len(idx), 0)
+
+    def test_delete_vector_multiple(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        for i in range(5):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, id=i)
+        idx.delete_vector(2)
+        self.assertEqual(len(idx), 4)
+
+    def test_delete_vector_nonexistent_raises(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, id=1)
+        with self.assertRaises(ValueError):
+            idx.delete_vector(999)
+
+    def test_delete_vector_invalid_type_raises(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, id=1)
+        with self.assertRaises(TypeError):
+            idx.delete_vector("abc")
+
+    def test_delete_vector_from_empty_raises(self):
+        idx = HNSWIndex()
+        with self.assertRaises(ValueError):
+            idx.delete_vector(1)
+
     def test_search_basic(self):
         random.seed(42)
         idx = HNSWIndex()
