@@ -47,6 +47,22 @@ class Index:
             self.id_to_index[self.vectors[i][0]] = i
 
         return deleted_vector
+
+    def update_vector(self, id, vector):
+        if not isinstance(id, int):
+            raise TypeError(f"unsupported operand type(s) for update_vector: 'Index' and '{type(id).__name__}'")
+
+        if not isinstance(vector, Vector):
+            raise TypeError(f"unsupported operand type(s) for update_vector: 'Index' and '{type(vector).__name__}'")
+
+        if id not in self.id_to_index:
+            raise ValueError(f"ID {id} does not exist in index")
+
+        index = self.id_to_index[id]
+        old_vector = self.vectors[index][1]
+        self.vectors[index] = (id, vector)
+
+        return (id, old_vector)
         
     def search(self, query_vector, top_k=5):
         if not isinstance(query_vector, Vector):

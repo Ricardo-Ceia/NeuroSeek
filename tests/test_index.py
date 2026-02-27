@@ -328,6 +328,79 @@ class TestIndex(unittest.TestCase):
         self.assertEqual(len(idx.vectors), 2)
         self.assertNotIn(2, idx.id_to_index)
 
+    def test_update_vector_basic(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        old = idx.update_vector(1, v2)
+        self.assertEqual(list(idx.vectors[0][1].data), [4, 5, 6])
+        self.assertIsInstance(old[1], Vector)
+
+    def test_update_vector_returns_old_vector(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        old = idx.update_vector(1, v2)
+        self.assertEqual(list(old[1].data), [1, 2, 3])
+
+    def test_update_vector_nonexistent_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        with self.assertRaises(ValueError):
+            idx.update_vector(999, v2)
+
+    def test_update_vector_invalid_id_type_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        with self.assertRaises(TypeError):
+            idx.update_vector("abc", v2)
+
+    def test_update_vector_invalid_vector_type_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        with self.assertRaises(TypeError):
+            idx.update_vector(1, [4, 5, 6])
+
+    def test_update_vector_different_dimension(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        idx.add_vector(v1, 1)
+        v2 = Vector(2)
+        v2.data = [4, 5]
+        idx.update_vector(1, v2)
+        self.assertEqual(len(idx.vectors[0][1].data), 2)
+
+    def test_update_vector_search_after_update(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 0, 0]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [0, 1, 0]
+        idx.add_vector(v2, 2)
+        v3 = Vector(3)
+        v3.data = [1, 0, 0]
+        old = idx.update_vector(2, v3)
+        self.assertEqual(old[0], 2)
+        self.assertEqual(list(old[1].data), [0, 1, 0])
+
 
 if __name__ == "__main__":
     unittest.main()
