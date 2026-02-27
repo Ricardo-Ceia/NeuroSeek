@@ -9,6 +9,81 @@ class TestIndex(unittest.TestCase):
         self.assertEqual(idx.id_to_index, {})
         self.assertEqual(idx._next_id, 0)
 
+    def test_len_empty_index(self):
+        idx = Index()
+        self.assertEqual(len(idx), 0)
+
+    def test_len_with_vectors(self):
+        idx = Index()
+        for i in range(5):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, i)
+        self.assertEqual(len(idx), 5)
+
+    def test_len_after_delete(self):
+        idx = Index()
+        for i in range(3):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, i)
+        idx.delete_vector(1)
+        self.assertEqual(len(idx), 2)
+
+    def test_get_vector_basic(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        retrieved = idx.get_vector(1)
+        self.assertIsInstance(retrieved, Vector)
+        self.assertEqual(list(retrieved.data), [1, 2, 3])
+
+    def test_get_vector_multiple(self):
+        idx = Index()
+        for i in range(5):
+            v = Vector(2)
+            v.data = [i, i+1]
+            idx.add_vector(v, i)
+        retrieved = idx.get_vector(3)
+        self.assertEqual(list(retrieved.data), [3, 4])
+
+    def test_get_vector_nonexistent_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        with self.assertRaises(ValueError):
+            idx.get_vector(999)
+
+    def test_get_vector_invalid_type_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        with self.assertRaises(TypeError):
+            idx.get_vector("abc")
+
+    def test_get_vector_after_update(self):
+        idx = Index()
+        v1 = Vector(3)
+        v1.data = [1, 2, 3]
+        idx.add_vector(v1, 1)
+        v2 = Vector(3)
+        v2.data = [4, 5, 6]
+        idx.update_vector(1, v2)
+        retrieved = idx.get_vector(1)
+        self.assertEqual(list(retrieved.data), [4, 5, 6])
+
+    def test_get_vector_after_delete_raises(self):
+        idx = Index()
+        v = Vector(3)
+        v.data = [1, 2, 3]
+        idx.add_vector(v, 1)
+        idx.delete_vector(1)
+        with self.assertRaises(ValueError):
+            idx.get_vector(1)
+
     def test_add_vector_basic(self):
         idx = Index()
         v = Vector(3)

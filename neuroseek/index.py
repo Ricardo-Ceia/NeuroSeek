@@ -7,6 +7,19 @@ class Index:
         self.id_to_index = {}
         self._next_id = 0
 
+    def __len__(self):
+        return len(self.vectors)
+
+    def get_vector(self, id):
+        if not isinstance(id, int):
+            raise TypeError(f"unsupported operand type(s) for get_vector: 'Index' and '{type(id).__name__}'")
+
+        if id not in self.id_to_index:
+            raise ValueError(f"ID {id} does not exist in index")
+
+        index = self.id_to_index[id]
+        return self.vectors[index][1]
+
     def add_vector(self, vector, id=None):
         if not isinstance(vector, Vector):
             raise TypeError(f"unsupported operand type(s) for add_vector: 'Index' and '{type(vector).__name__}'")
