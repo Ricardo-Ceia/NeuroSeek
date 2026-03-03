@@ -1,8 +1,7 @@
 import unittest
 import os
 import random
-from neuroseek import Vector
-from neuroseek.hnsw_index import HNSWIndex
+from neuroseek import Vector, HNSWIndex
 from neuroseek.hnsw_persistence import save_hnsw_index, load_hnsw_index
 
 

@@ -1,7 +1,6 @@
 import unittest
 import random
-from neuroseek import Vector
-from neuroseek.hnsw_index import HNSWIndex
+from neuroseek import Vector, HNSWIndex
 
 
 class TestHNSWIndex(unittest.TestCase):

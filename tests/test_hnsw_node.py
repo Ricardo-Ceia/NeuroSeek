@@ -1,6 +1,5 @@
 import unittest
-from neuroseek import Vector
-from neuroseek.hnsw_node import HNSWNode
+from neuroseek import Vector, HNSWNode
 
 
 class TestHNSWNode(unittest.TestCase):
