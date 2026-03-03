@@ -181,6 +181,67 @@ class TestIndex(unittest.TestCase):
         self.assertEqual(id1, 0)
         self.assertEqual(id2, 1)
 
+    def test_add_vectors_basic(self):
+        idx = Index()
+        vectors = [Vector(3), Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        vectors[2].data = [7, 8, 9]
+        ids = idx.add_vectors(vectors, [1, 2, 3])
+        self.assertEqual(ids, [1, 2, 3])
+        self.assertEqual(len(idx), 3)
+
+    def test_add_vectors_auto_ids(self):
+        idx = Index()
+        vectors = [Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        ids = idx.add_vectors(vectors)
+        self.assertEqual(ids, [0, 1])
+        self.assertEqual(len(idx), 2)
+
+    def test_add_vectors_with_mixed_ids(self):
+        idx = Index()
+        vectors = [Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        ids = idx.add_vectors(vectors, [1, None])
+        self.assertEqual(ids, [1, 0])
+        self.assertEqual(len(idx), 2)
+
+    def test_add_vectors_empty_list(self):
+        idx = Index()
+        ids = idx.add_vectors([])
+        self.assertEqual(ids, [])
+        self.assertEqual(len(idx), 0)
+
+    def test_add_vectors_invalid_vectors_type(self):
+        idx = Index()
+        with self.assertRaises(TypeError):
+            idx.add_vectors("not a list")
+
+    def test_add_vectors_invalid_ids_type(self):
+        idx = Index()
+        vectors = [Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        with self.assertRaises(TypeError):
+            idx.add_vectors(vectors, "not a list")
+
+    def test_add_vectors_length_mismatch(self):
+        idx = Index()
+        vectors = [Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        with self.assertRaises(ValueError):
+            idx.add_vectors(vectors, [1, 2, 3])
+
+    def test_add_vectors_invalid_id_type(self):
+        idx = Index()
+        vectors = [Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        with self.assertRaises(TypeError):
+            idx.add_vectors(vectors, ["abc"])
+
     def test_search_basic(self):
         idx = Index()
         v1 = Vector(3)
