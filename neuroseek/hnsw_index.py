@@ -102,6 +102,29 @@ class HNSWIndex:
 
         return id
 
+    def add_vectors(self, vectors, ids=None):
+        if not isinstance(vectors, (list, tuple)):
+            raise TypeError(f"vectors must be a list or tuple, not {type(vectors).__name__}")
+
+        if ids is None:
+            ids = [None] * len(vectors)
+
+        if not isinstance(ids, (list, tuple)):
+            raise TypeError(f"ids must be a list, tuple, or None, not {type(ids).__name__}")
+
+        if len(vectors) != len(ids):
+            raise ValueError(f"vectors and ids must have the same length")
+
+        for id in ids:
+            if id is not None and not isinstance(id, int):
+                raise TypeError(f"id must be an int or None, not {type(id).__name__}")
+
+        returned_ids = []
+        for vector, id in zip(vectors, ids):
+            returned_ids.append(self.add_vector(vector, id))
+
+        return returned_ids
+
     def get_vector(self, id):
         if not isinstance(id, int):
             raise TypeError(f"id must be an int, not {type(id).__name__}")

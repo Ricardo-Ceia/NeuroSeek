@@ -71,6 +71,65 @@ class TestHNSWIndex(unittest.TestCase):
         with self.assertRaises(ValueError):
             idx.add_vector(v2, id=1)
 
+    def test_add_vectors_basic(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        vectors = [Vector(3), Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        vectors[2].data = [7, 8, 9]
+        ids = idx.add_vectors(vectors, [1, 2, 3])
+        self.assertEqual(ids, [1, 2, 3])
+        self.assertEqual(len(idx), 3)
+
+    def test_add_vectors_auto_ids(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        vectors = [Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        ids = idx.add_vectors(vectors)
+        self.assertEqual(ids, [0, 1])
+        self.assertEqual(len(idx), 2)
+
+    def test_add_vectors_empty_list(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        ids = idx.add_vectors([])
+        self.assertEqual(ids, [])
+        self.assertEqual(len(idx), 0)
+
+    def test_add_vectors_invalid_vectors_type(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        with self.assertRaises(TypeError):
+            idx.add_vectors("not a list")
+
+    def test_add_vectors_invalid_ids_type(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        vectors = [Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        with self.assertRaises(TypeError):
+            idx.add_vectors(vectors, "not a list")
+
+    def test_add_vectors_length_mismatch(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        vectors = [Vector(3), Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        vectors[1].data = [4, 5, 6]
+        with self.assertRaises(ValueError):
+            idx.add_vectors(vectors, [1, 2, 3])
+
+    def test_add_vectors_invalid_id_type(self):
+        random.seed(42)
+        idx = HNSWIndex()
+        vectors = [Vector(3)]
+        vectors[0].data = [1, 2, 3]
+        with self.assertRaises(TypeError):
+            idx.add_vectors(vectors, ["abc"])
+
     def test_get_vector_basic(self):
         random.seed(42)
         idx = HNSWIndex()
