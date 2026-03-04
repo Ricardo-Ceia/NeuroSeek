@@ -23,44 +23,54 @@ class HNSWIndex:
     def _distance(self, v1, v2):
         return 1 - v1.cosine_similarity(v2)  # Convert similarity to distance
 
-    def _search_layer(self, query, ef, layer):
+    def _search_layer_from(self, query, entry_node, ef, layer):
+        """Search a single layer starting from a given entry node.
+
+        Unlike the old _search_layer, this accepts an explicit entry_node and
+        never reads or writes self.entry_point, making it safe to call from
+        both add_vector (construction) and search (query time).
+        """
         if not self.layers or layer >= len(self.layers) or not self.layers[layer]:
             return []
 
         visited = set()
-        candidates = []  # [(node_id, distance)]
-        results = []  # [(node_id, distance)]
-
-        if self.entry_point:
-            entry_id = self.entry_point.id
-            entry_node = self.id_to_node[entry_id]
-            dist = self._distance(query, entry_node.vector)
-            candidates.append((entry_id, dist))
-            results.append((entry_id, dist))
-            visited.add(entry_id)
+        # Min-heap: (distance, node_id) — smallest distance at top
+        import heapq
+        entry_dist = self._distance(query, entry_node.vector)
+        # candidates: min-heap by distance (closest first)
+        candidates = [(entry_dist, entry_node.id)]
+        # results: max-heap by distance (farthest first, so we can prune)
+        results = [(-entry_dist, entry_node.id)]
+        visited.add(entry_node.id)
 
         while candidates:
-            candidates.sort(key=lambda x: x[1])
-            current_id, current_dist = candidates.pop(0)
+            current_dist, current_id = heapq.heappop(candidates)
 
-            if results and current_dist > results[-1][1]:
+            # Worst (farthest) result so far
+            worst_result_dist = -results[0][0]
+            if current_dist > worst_result_dist and len(results) >= ef:
                 break
 
             current_node = self.id_to_node[current_id]
-            for neighbor_id, neighbor_dist in current_node.get_connections(layer):
+            for neighbor_id, _ in current_node.get_connections(layer):
                 if neighbor_id not in visited:
                     visited.add(neighbor_id)
                     neighbor_node = self.id_to_node[neighbor_id]
                     dist = self._distance(query, neighbor_node.vector)
 
-                    if len(results) < ef or dist < results[-1][1]:
-                        candidates.append((neighbor_id, dist))
-                        results.append((neighbor_id, dist))
-                        results.sort(key=lambda x: x[1])
+                    worst_result_dist = -results[0][0]
+                    if len(results) < ef or dist < worst_result_dist:
+                        heapq.heappush(candidates, (dist, neighbor_id))
+                        heapq.heappush(results, (-dist, neighbor_id))
                         if len(results) > ef:
-                            results.pop()
+                            heapq.heappop(results)
 
-        return results[:ef]
+        # Convert max-heap back to sorted list [(node_id, dist), ...] ascending
+        sorted_results = sorted(
+            [(nid, -neg_dist) for neg_dist, nid in results],
+            key=lambda x: x[1]
+        )
+        return sorted_results[:ef]
 
     def add_vector(self, vector, id=None):
         if not isinstance(vector, Vector):
@@ -68,6 +78,8 @@ class HNSWIndex:
 
         if id is None:
             id = self.num_vectors
+            while id in self.id_to_node:
+                id += 1
 
         if not isinstance(id, int):
             raise TypeError(f"id must be an int, not {type(id).__name__}")
@@ -75,30 +87,47 @@ class HNSWIndex:
         if id in self.id_to_node:
             raise ValueError(f"ID {id} already exists")
 
-        node = HNSWNode(id=id, vector=vector, layer=0)
+        node_layer = self._get_random_layer()
+        node = HNSWNode(id=id, vector=vector, layer=node_layer)
         self.id_to_node[id] = node
         self.num_vectors += 1
 
-        if not self.layers:
+        # Expand layer list if needed
+        while len(self.layers) <= node_layer:
             self.layers.append({})
+
+        # Register node in every layer up to its assigned layer
+        for lyr in range(node_layer + 1):
+            self.layers[lyr][id] = node
+
+        if self.entry_point is None:
             self.entry_point = node
+            return id
 
-        while len(self.layers) <= node.layer:
-            self.layers.append({})
+        ep = self.entry_point
 
-        self.layers[node.layer][id] = node
+        # Phase 1: greedily descend layers ABOVE node_layer — find the best
+        # entry point for the connection-building phase without adding edges.
+        for layer in reversed(range(node_layer + 1, len(self.layers))):
+            layer_results = self._search_layer_from(vector, ep, ef=1, layer=layer)
+            if layer_results:
+                ep = self.id_to_node[layer_results[0][0]]
 
-        if node.layer > 0:
-            search_layers = list(range(node.layer, len(self.layers) - 1))
-        else:
-            search_layers = list(range(len(self.layers) - 1))
-
-        for layer in reversed(search_layers):
-            neighbors = self._search_layer(vector, self.efConstruction, layer)
-            for neighbor_id, _ in neighbors[:self.M]:
+        # Phase 2: build connections on layers 0..node_layer
+        for layer in reversed(range(node_layer + 1)):
+            neighbors = self._search_layer_from(vector, ep, self.efConstruction, layer)
+            for neighbor_id, dist in neighbors[:self.M]:
                 neighbor_node = self.id_to_node[neighbor_id]
-                node.add_connection(neighbor_id, self._distance(vector, neighbor_node.vector), node.layer)
-                neighbor_node.add_connection(id, self._distance(neighbor_node.vector, vector), node.layer)
+                node.add_connection(neighbor_id, dist, layer)
+                neighbor_node.add_connection(id, dist, layer)
+            if neighbors:
+                # Best neighbor in this layer is the entry point for the layer below
+                ep = self.id_to_node[neighbors[0][0]]
+
+        # If the new node reaches a higher layer than the current entry point,
+        # it becomes the new global entry point.
+        if node_layer >= self.entry_point.layer:
+            self.entry_point = node
 
         return id
 
@@ -178,14 +207,16 @@ class HNSWIndex:
         if ef < top_k:
             ef = top_k
 
-        results = []
-        for layer in reversed(range(len(self.layers))):
-            layer_results = self._search_layer(query, ef, layer)
-            if layer_results:
-                best_id = layer_results[0][0]
-                self.entry_point = self.id_to_node[best_id]
+        ep = self.entry_point
 
-        final_results = self._search_layer(query, ef, 0)
+        # Greedily descend from the top layer to layer 1, tracking the closest
+        # node as the entry point for the next layer — no state mutation.
+        for layer in reversed(range(1, len(self.layers))):
+            layer_results = self._search_layer_from(query, ep, ef=1, layer=layer)
+            if layer_results:
+                ep = self.id_to_node[layer_results[0][0]]
+
+        final_results = self._search_layer_from(query, ep, ef, layer=0)
         final_results.sort(key=lambda x: x[1])
 
         return [(node_id, 1 - dist) for node_id, dist in final_results[:top_k]]
