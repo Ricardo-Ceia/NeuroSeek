@@ -270,6 +270,14 @@ class TestSearchEngineSearch(unittest.TestCase):
         self.engine.add("hello world")
         self.assertIn("score", self.engine.search("hello")[0])
 
+    def test_result_has_metadata_key(self):
+        self.engine.add("hello world")
+        self.assertIn("metadata", self.engine.search("hello")[0])
+
+    def test_result_metadata_is_dict(self):
+        self.engine.add("hello world")
+        self.assertIsInstance(self.engine.search("hello")[0]["metadata"], dict)
+
     def test_result_id_is_int(self):
         self.engine.add("hello world")
         self.assertIsInstance(self.engine.search("hello")[0]["id"], int)
@@ -393,6 +401,122 @@ class TestSearchEngineLen(unittest.TestCase):
     def test_len_after_batch(self):
         self.engine.add_batch(["a", "b", "c"])
         self.assertEqual(len(self.engine), 3)
+
+
+
+
+# ---------------------------------------------------------------------------
+# metadata — add() / add_batch() / search() with filter
+# ---------------------------------------------------------------------------
+
+class TestSearchEngineMetadata(unittest.TestCase):
+
+    def setUp(self):
+        self.engine = SearchEngine()
+
+    def test_add_with_metadata_stores_it(self):
+        doc_id = self.engine.add("hello world", metadata={"source": "web"})
+        results = self.engine.search("hello", top_k=1)
+        self.assertEqual(results[0]["metadata"], {"source": "web"})
+
+    def test_add_without_metadata_returns_empty_dict(self):
+        self.engine.add("hello world")
+        results = self.engine.search("hello", top_k=1)
+        self.assertEqual(results[0]["metadata"], {})
+
+    def test_add_metadata_none_returns_empty_dict(self):
+        self.engine.add("hello world", metadata=None)
+        results = self.engine.search("hello", top_k=1)
+        self.assertEqual(results[0]["metadata"], {})
+
+    def test_add_invalid_metadata_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.engine.add("hello", metadata="bad")  # type: ignore
+
+    def test_add_metadata_invalid_value_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.engine.add("hello", metadata={"k": [1, 2]})  # type: ignore
+
+    def test_add_batch_with_metadata_list(self):
+        self.engine.add_batch(
+            ["doc a", "doc b"],
+            metadata_list=[{"tag": "x"}, {"tag": "y"}],
+        )
+        results = self.engine.search("doc", top_k=2)
+        tags = {r["metadata"].get("tag") for r in results}
+        self.assertEqual(tags, {"x", "y"})
+
+    def test_add_batch_metadata_list_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            self.engine.add_batch(["a", "b"], metadata_list=[{"k": "v"}])
+
+    def test_add_batch_invalid_metadata_element_raises(self):
+        with self.assertRaises(TypeError):
+            self.engine.add_batch(["a", "b"], metadata_list=[{"k": "v"}, {"bad": []}])  # type: ignore
+
+
+class TestSearchEngineFilter(unittest.TestCase):
+
+    def setUp(self):
+        self.engine = SearchEngine()
+        self.engine.add("Paris is the capital of France",
+                        id=0, metadata={"country": "France", "type": "city"})
+        self.engine.add("Berlin is the capital of Germany",
+                        id=1, metadata={"country": "Germany", "type": "city"})
+        self.engine.add("The Eiffel Tower is in Paris",
+                        id=2, metadata={"country": "France", "type": "landmark"})
+        self.engine.add("dogs and puppies are great pets",
+                        id=3, metadata={"category": "animals"})
+
+    def test_filter_returns_only_matching_docs(self):
+        results = self.engine.search("Paris", top_k=5, filter={"country": "France"})
+        for r in results:
+            self.assertEqual(r["metadata"]["country"], "France")
+
+    def test_filter_excludes_non_matching_docs(self):
+        results = self.engine.search("capital city", top_k=5, filter={"country": "Germany"})
+        ids = [r["id"] for r in results]
+        self.assertNotIn(0, ids)
+        self.assertNotIn(2, ids)
+        self.assertNotIn(3, ids)
+
+    def test_filter_multiple_keys(self):
+        results = self.engine.search("Paris", top_k=5,
+                                     filter={"country": "France", "type": "city"})
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], 0)
+
+    def test_none_filter_returns_all_candidates(self):
+        results = self.engine.search("Paris", top_k=5, filter=None)
+        self.assertGreater(len(results), 1)
+
+    def test_empty_filter_returns_all_candidates(self):
+        results = self.engine.search("Paris", top_k=5, filter={})
+        self.assertGreater(len(results), 1)
+
+    def test_filter_no_matches_returns_empty(self):
+        results = self.engine.search("Paris", top_k=5,
+                                     filter={"country": "Japan"})
+        self.assertEqual(results, [])
+
+    def test_filter_respects_top_k(self):
+        results = self.engine.search("France", top_k=1,
+                                     filter={"country": "France"})
+        self.assertLessEqual(len(results), 1)
+
+    def test_filter_invalid_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.engine.search("hello", filter="bad")  # type: ignore
+
+    def test_filter_invalid_value_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.engine.search("hello", filter={"k": [1, 2]})  # type: ignore
+
+    def test_filtered_results_sorted_by_score_descending(self):
+        results = self.engine.search("France", top_k=5,
+                                     filter={"country": "France"})
+        scores = [r["score"] for r in results]
+        self.assertEqual(scores, sorted(scores, reverse=True))
 
 
 if __name__ == "__main__":

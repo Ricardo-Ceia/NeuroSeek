@@ -131,8 +131,20 @@ class NamespaceManager:
         text: str,
         namespace: str,
         id: Optional[int] = None,  # noqa: A002
+        metadata: Optional[dict] = None,
     ) -> int:
         """Embed *text* and add it to *namespace* (auto-created if absent).
+
+        Parameters
+        ----------
+        text:
+            Non-empty document string to store and index.
+        namespace:
+            Target namespace (auto-created if absent).
+        id:
+            Optional explicit integer ID.
+        metadata:
+            Optional flat dict of str → str/int/float/bool pairs.
 
         Returns
         -------
@@ -140,17 +152,30 @@ class NamespaceManager:
             The ID assigned to the document within *namespace*.
         """
         engine = self._ensure_namespace(namespace)
-        return engine.add(text, id=id)
+        return engine.add(text, id=id, metadata=metadata)
 
     def add_batch(
         self,
         texts: list[str] | tuple[str, ...],
         namespace: str,
         ids: Optional[list[int] | tuple[int, ...]] = None,
+        metadata_list: Optional[list[Optional[dict]]] = None,
     ) -> list[int]:
-        """Embed and index multiple documents into *namespace*."""
+        """Embed and index multiple documents into *namespace*.
+
+        Parameters
+        ----------
+        texts:
+            List or tuple of non-empty document strings.
+        namespace:
+            Target namespace (auto-created if absent).
+        ids:
+            Optional list/tuple of explicit IDs.
+        metadata_list:
+            Optional list of metadata dicts (or None entries), one per text.
+        """
         engine = self._ensure_namespace(namespace)
-        return engine.add_batch(texts, ids=ids)
+        return engine.add_batch(texts, ids=ids, metadata_list=metadata_list)
 
     def delete(self, id: int, namespace: str) -> None:  # noqa: A002
         """Remove document *id* from *namespace*.
@@ -168,14 +193,27 @@ class NamespaceManager:
         query: str,
         namespace: str,
         top_k: int = 5,
+        filter: Optional[dict] = None,  # noqa: A002
     ) -> list[dict]:
         """Search *namespace* for *query*.
+
+        Parameters
+        ----------
+        query:
+            Non-empty query string.
+        namespace:
+            Namespace to search. Must already exist.
+        top_k:
+            Number of results to return.
+        filter:
+            Optional metadata filter dict. Only documents whose metadata
+            contains all key-value pairs in *filter* are returned.
 
         Returns
         -------
         list[dict]
             Same structure as :meth:`SearchEngine.search` —
-            each dict has ``id``, ``text``, and ``score``.
+            each dict has ``id``, ``text``, ``score``, and ``metadata``.
 
         Raises
         ------
@@ -183,7 +221,7 @@ class NamespaceManager:
             If *namespace* does not exist.
         """
         engine = self._get_namespace(namespace)
-        return engine.search(query, top_k=top_k)
+        return engine.search(query, top_k=top_k, filter=filter)
 
     # ------------------------------------------------------------------
     # Aggregate info

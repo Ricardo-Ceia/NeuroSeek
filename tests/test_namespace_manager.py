@@ -244,6 +244,7 @@ class TestNamespaceManagerSearch(unittest.TestCase):
         self.assertIn("id", result)
         self.assertIn("text", result)
         self.assertIn("score", result)
+        self.assertIn("metadata", result)
 
     def test_search_returns_correct_text(self):
         self.mgr.add("Paris is the capital of France", "cities")
@@ -317,6 +318,148 @@ class TestNamespaceManagerLen(unittest.TestCase):
         self.mgr.add("hello", "ns", id=0)
         self.mgr.delete(0, "ns")
         self.assertEqual(len(self.mgr), 0)
+
+
+# ---------------------------------------------------------------------------
+# Metadata — add() / add_batch()
+# ---------------------------------------------------------------------------
+
+class TestNamespaceManagerAddMetadata(unittest.TestCase):
+
+    def setUp(self):
+        self.mgr = NamespaceManager()
+
+    def test_add_with_metadata_stores_it(self):
+        self.mgr.add("hello", "ns", id=0, metadata={"lang": "en"})
+        result = self.mgr.search("hello", "ns", top_k=1)[0]
+        self.assertEqual(result["metadata"], {"lang": "en"})
+
+    def test_add_without_metadata_returns_empty_dict(self):
+        self.mgr.add("hello", "ns", id=0)
+        result = self.mgr.search("hello", "ns", top_k=1)[0]
+        self.assertEqual(result["metadata"], {})
+
+    def test_add_metadata_none_returns_empty_dict(self):
+        self.mgr.add("hello", "ns", id=0, metadata=None)
+        result = self.mgr.search("hello", "ns", top_k=1)[0]
+        self.assertEqual(result["metadata"], {})
+
+    def test_add_metadata_invalid_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.mgr.add("hello", "ns", metadata="bad")  # type: ignore
+
+    def test_add_metadata_non_str_key_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.mgr.add("hello", "ns", metadata={1: "v"})  # type: ignore
+
+    def test_add_metadata_invalid_value_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.mgr.add("hello", "ns", metadata={"k": [1, 2]})  # type: ignore
+
+    def test_add_batch_with_metadata_list(self):
+        ids = self.mgr.add_batch(
+            ["cat", "dog"],
+            "ns",
+            ids=[0, 1],
+            metadata_list=[{"animal": "cat"}, {"animal": "dog"}],
+        )
+        self.assertEqual(ids, [0, 1])
+        results = {r["id"]: r["metadata"] for r in self.mgr.search("animal", "ns", top_k=2)}
+        self.assertEqual(results[0], {"animal": "cat"})
+        self.assertEqual(results[1], {"animal": "dog"})
+
+    def test_add_batch_metadata_list_wrong_length_raises(self):
+        with self.assertRaises(ValueError):
+            self.mgr.add_batch(["a", "b", "c"], "ns", metadata_list=[{"k": "v"}])
+
+    def test_add_batch_without_metadata_list_returns_empty_dicts(self):
+        self.mgr.add_batch(["a", "b"], "ns", ids=[0, 1])
+        results = {r["id"]: r["metadata"] for r in self.mgr.search("a", "ns", top_k=2)}
+        self.assertEqual(results[0], {})
+        self.assertEqual(results[1], {})
+
+    def test_add_metadata_multiple_fields(self):
+        self.mgr.add("hello", "ns", id=0, metadata={"lang": "en", "version": 2, "active": True})
+        result = self.mgr.search("hello", "ns", top_k=1)[0]
+        self.assertEqual(result["metadata"]["lang"], "en")
+        self.assertEqual(result["metadata"]["version"], 2)
+        self.assertEqual(result["metadata"]["active"], True)
+
+
+# ---------------------------------------------------------------------------
+# Metadata — search() with filter
+# ---------------------------------------------------------------------------
+
+class TestNamespaceManagerSearchFilter(unittest.TestCase):
+
+    def setUp(self):
+        self.mgr = NamespaceManager()
+        self.mgr.add_batch(
+            [
+                "the cat sat on the mat",
+                "dogs are wonderful pets",
+                "python is a programming language",
+                "cats love to sleep",
+                "dogs fetch sticks",
+            ],
+            "ns",
+            ids=[0, 1, 2, 3, 4],
+            metadata_list=[
+                {"type": "animal", "subject": "cat"},
+                {"type": "animal", "subject": "dog"},
+                {"type": "tech", "subject": "python"},
+                {"type": "animal", "subject": "cat"},
+                {"type": "animal", "subject": "dog"},
+            ],
+        )
+
+    def test_filter_single_field_reduces_results(self):
+        results = self.mgr.search("animals", "ns", top_k=5, filter={"type": "tech"})
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], 2)
+
+    def test_filter_returns_only_matching_docs(self):
+        results = self.mgr.search("pets", "ns", top_k=5, filter={"subject": "cat"})
+        ids = {r["id"] for r in results}
+        self.assertEqual(ids, {0, 3})
+
+    def test_filter_multi_field(self):
+        results = self.mgr.search("animals", "ns", top_k=5,
+                                  filter={"type": "animal", "subject": "dog"})
+        ids = {r["id"] for r in results}
+        self.assertEqual(ids, {1, 4})
+
+    def test_filter_no_match_returns_empty(self):
+        results = self.mgr.search("anything", "ns", top_k=5, filter={"type": "nonexistent"})
+        self.assertEqual(results, [])
+
+    def test_filter_none_returns_all(self):
+        results = self.mgr.search("animals", "ns", top_k=5, filter=None)
+        self.assertEqual(len(results), 5)
+
+    def test_filter_invalid_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.mgr.search("query", "ns", filter="bad")  # type: ignore
+
+    def test_filter_non_str_key_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.mgr.search("query", "ns", filter={1: "v"})  # type: ignore
+
+    def test_filter_result_includes_metadata_key(self):
+        results = self.mgr.search("cat", "ns", top_k=1, filter={"subject": "cat"})
+        self.assertIn("metadata", results[0])
+
+    def test_filter_respects_namespace_isolation(self):
+        self.mgr.add("cats meow", "other", id=0, metadata={"subject": "cat"})
+        # filter in "ns" should not see docs from "other"
+        results_ns = self.mgr.search("cat", "ns", top_k=5, filter={"subject": "cat"})
+        ids_ns = {r["id"] for r in results_ns}
+        self.assertEqual(ids_ns, {0, 3})
+
+    def test_filter_scores_still_descending(self):
+        results = self.mgr.search("cats", "ns", top_k=5, filter={"type": "animal"})
+        scores = [r["score"] for r in results]
+        self.assertEqual(scores, sorted(scores, reverse=True))
 
 
 if __name__ == "__main__":

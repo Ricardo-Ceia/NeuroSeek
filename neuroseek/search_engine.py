@@ -4,11 +4,11 @@ SearchEngine — high-level semantic search over raw text documents.
 Ties together:
 - ``Embedder``      — converts text → Vector
 - ``HNSWIndex``     — approximate nearest-neighbour index over Vectors
-- ``DocumentStore`` — maps integer IDs → raw text
+- ``DocumentStore`` — maps integer IDs → raw text + metadata
 
 The same integer ID is used in both the ``HNSWIndex`` and the
 ``DocumentStore``, so every search result can be enriched with the original
-text without a secondary lookup table.
+text and metadata without a secondary lookup table.
 """
 
 from __future__ import annotations
@@ -17,7 +17,12 @@ from typing import Optional
 
 from neuroseek.embedder import Embedder, DEFAULT_MODEL
 from neuroseek.hnsw_index import HNSWIndex
-from neuroseek.document_store import DocumentStore
+from neuroseek.document_store import DocumentStore, _validate_metadata
+
+# How many extra candidates to fetch from HNSW when a metadata filter is
+# active.  We fetch top_k * _FILTER_OVERSAMPLE results then trim to top_k
+# after filtering.  If fewer than top_k pass the filter we return what we have.
+_FILTER_OVERSAMPLE = 10
 
 
 class SearchEngine:
@@ -92,7 +97,12 @@ class SearchEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def add(self, text: str, id: Optional[int] = None) -> int:  # noqa: A002
+    def add(
+        self,
+        text: str,
+        id: Optional[int] = None,  # noqa: A002
+        metadata: Optional[dict] = None,
+    ) -> int:
         """Embed *text* and add it to the engine.
 
         Parameters
@@ -103,26 +113,26 @@ class SearchEngine:
             Optional explicit integer ID. If omitted, one is auto-assigned.
             Providing an existing ID raises ``ValueError`` (the HNSW index does
             not support in-place upsert; call ``delete`` first).
+        metadata:
+            Optional flat dict of str → str/int/float/bool pairs attached to
+            the document and used for filtering at search time.
 
         Returns
         -------
         int
             The ID under which the document is stored.
         """
-        # Validation is delegated to DocumentStore and HNSWIndex — they raise
-        # with clear messages on bad input.
+        _validate_metadata(metadata)
         vector = self._embedder.encode(text)
-        # Add to the HNSW index first so that, if an explicit id collides, we
-        # fail before mutating the document store.
         assigned_id = self._index.add_vector(vector, id=id)
-        # Use the exact same id in the document store (it accepts explicit ids).
-        self._store.add(text, id=assigned_id)
+        self._store.add(text, id=assigned_id, metadata=metadata)
         return assigned_id
 
     def add_batch(
         self,
         texts: list[str] | tuple[str, ...],
         ids: Optional[list[int] | tuple[int, ...]] = None,
+        metadata_list: Optional[list[Optional[dict]]] = None,
     ) -> list[int]:
         """Embed and index multiple documents.
 
@@ -132,6 +142,8 @@ class SearchEngine:
             List or tuple of non-empty document strings.
         ids:
             Optional list/tuple of explicit IDs (same length as *texts*).
+        metadata_list:
+            Optional list of metadata dicts (or None entries), one per text.
 
         Returns
         -------
@@ -156,41 +168,43 @@ class SearchEngine:
                     f"(got {len(ids)} ids and {len(texts)} texts)"
                 )
 
-        # Embed all texts first (validates text types / empty strings)
+        if metadata_list is not None:
+            if not isinstance(metadata_list, (list, tuple)):
+                raise TypeError(
+                    f"metadata_list must be a list or tuple, "
+                    f"got {type(metadata_list).__name__}"
+                )
+            if len(metadata_list) != len(texts):
+                raise ValueError(
+                    f"metadata_list and texts must have the same length "
+                    f"(got {len(metadata_list)} and {len(texts)})"
+                )
+            for i, meta in enumerate(metadata_list):
+                _validate_metadata(meta, context=f"index {i}")
+
+        # Embed all texts (validates text types / empty strings)
         vectors = self._embedder.encode_batch(texts)
 
         ids_list = list(ids) if ids is not None else [None] * len(texts)
-
-        # Add vectors to the HNSW index
         assigned_ids = self._index.add_vectors(vectors, ids=ids_list)
 
-        # Mirror every document into the store using the assigned id
-        for text, assigned_id in zip(texts, assigned_ids):
-            self._store.add(text, id=assigned_id)
+        for i, (text, assigned_id) in enumerate(zip(texts, assigned_ids)):
+            meta = metadata_list[i] if metadata_list is not None else None
+            self._store.add(text, id=assigned_id, metadata=meta)
 
         return assigned_ids
 
     def delete(self, id: int) -> None:  # noqa: A002
-        """Remove the document with *id* from both the index and the store.
-
-        Parameters
-        ----------
-        id:
-            Integer ID of the document to remove.
-
-        Raises
-        ------
-        TypeError
-            If *id* is not an int.
-        ValueError
-            If *id* does not exist in the index.
-        """
-        # Delete from HNSW first (stricter; raises ValueError on missing id)
+        """Remove the document with *id* from both the index and the store."""
         self._index.delete_vector(id)
-        # Delete from document store (should always succeed if index deletion did)
         self._store.delete(id)
 
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        filter: Optional[dict] = None,  # noqa: A002
+    ) -> list[dict]:
         """Return the *top_k* most semantically similar documents to *query*.
 
         Parameters
@@ -199,34 +213,60 @@ class SearchEngine:
             Non-empty query string.
         top_k:
             Number of results to return. Defaults to 5.
+        filter:
+            Optional metadata filter. Only documents whose metadata contains
+            all key-value pairs in *filter* are returned. ``None`` means no
+            filtering.
 
         Returns
         -------
         list[dict]
             Each dict has the keys:
-            - ``"id"``    (int)   — document ID
-            - ``"text"``  (str)   — original document text
-            - ``"score"`` (float) — cosine similarity in [0, 1], higher = more similar
+            - ``"id"``       (int)   — document ID
+            - ``"text"``     (str)   — original document text
+            - ``"score"``    (float) — cosine similarity in [0, 1]
+            - ``"metadata"`` (dict)  — document metadata (may be empty)
             Sorted by score descending (best match first).
 
         Raises
         ------
         TypeError
-            If *query* is not a str or *top_k* is not an int.
+            If *query* is not a str, *top_k* is not an int, or *filter* is
+            not a dict.
         ValueError
             If *query* is empty/whitespace or *top_k* < 1.
         """
-        # encode() validates text type and emptiness
+        _validate_metadata(filter)
+
         query_vector = self._embedder.encode(query)
-        raw_results = self._index.search(query_vector, top_k=top_k)
-        return [
-            {
-                "id": doc_id,
-                "text": self._store.get(doc_id),
-                "score": score,
-            }
-            for doc_id, score in raw_results
-        ]
+
+        if filter:
+            # Fetch more candidates so we have enough after filtering
+            fetch_k = top_k * _FILTER_OVERSAMPLE
+            raw_results = self._index.search(query_vector, top_k=fetch_k)
+            results = []
+            for doc_id, score in raw_results:
+                if self._store.matches_filter(doc_id, filter):
+                    results.append({
+                        "id": doc_id,
+                        "text": self._store.get(doc_id),
+                        "score": score,
+                        "metadata": self._store.get_metadata(doc_id),
+                    })
+                    if len(results) == top_k:
+                        break
+            return results
+        else:
+            raw_results = self._index.search(query_vector, top_k=top_k)
+            return [
+                {
+                    "id": doc_id,
+                    "text": self._store.get(doc_id),
+                    "score": score,
+                    "metadata": self._store.get_metadata(doc_id),
+                }
+                for doc_id, score in raw_results
+            ]
 
     def __len__(self) -> int:
         """Return the number of documents currently in the engine."""
