@@ -67,6 +67,27 @@ class SearchEngine:
         self._index = HNSWIndex(M=M, efConstruction=efConstruction)
         self._store = DocumentStore()
 
+    @classmethod
+    def _from_embedder(
+        cls,
+        embedder: Embedder,
+        M: int = 16,
+        efConstruction: int = 200,
+    ) -> "SearchEngine":
+        """Create a SearchEngine that reuses an already-loaded *embedder*.
+
+        This avoids re-loading the model when many engines share the same
+        model (e.g. inside NamespaceManager).  For internal use only.
+        """
+        instance = object.__new__(cls)
+        instance.model_name = embedder.model_name
+        instance.M = M
+        instance.efConstruction = efConstruction
+        instance._embedder = embedder
+        instance._index = HNSWIndex(M=M, efConstruction=efConstruction)
+        instance._store = DocumentStore()
+        return instance
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

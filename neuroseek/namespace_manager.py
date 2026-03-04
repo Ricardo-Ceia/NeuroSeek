@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Optional
 
 from neuroseek.search_engine import SearchEngine
-from neuroseek.embedder import DEFAULT_MODEL
+from neuroseek.embedder import Embedder, DEFAULT_MODEL
 
 
 class NamespaceManager:
@@ -52,6 +52,7 @@ class NamespaceManager:
         self.model_name = model_name
         self.M = M
         self.efConstruction = efConstruction
+        self._embedder = Embedder(model_name)   # shared across all namespaces
         self._namespaces: dict[str, SearchEngine] = {}
 
     # ------------------------------------------------------------------
@@ -74,8 +75,8 @@ class NamespaceManager:
         return self._namespaces[name]
 
     def _make_engine(self) -> SearchEngine:
-        return SearchEngine(
-            model_name=self.model_name,
+        return SearchEngine._from_embedder(
+            embedder=self._embedder,
             M=self.M,
             efConstruction=self.efConstruction,
         )
