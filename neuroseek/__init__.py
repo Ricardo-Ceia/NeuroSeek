@@ -9,6 +9,8 @@ from neuroseek.search_engine_persistence import save_search_engine, load_search_
 from neuroseek.namespace_manager import NamespaceManager
 from neuroseek.namespace_manager_persistence import save_namespace_manager, load_namespace_manager
 
+__version__ = "0.1.0"
+
 __all__ = [
     'Vector',
     'Index',
@@ -22,4 +24,5 @@ __all__ = [
     'NamespaceManager',
     'save_namespace_manager',
     'load_namespace_manager',
+    '__version__',
 ]

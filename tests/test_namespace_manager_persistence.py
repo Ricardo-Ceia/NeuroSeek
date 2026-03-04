@@ -2,12 +2,15 @@
 Comprehensive tests for save_namespace_manager / load_namespace_manager.
 
 No mocking — real embeddings, real file I/O, real round-trips.
+The model is loaded once per session via the conftest fixture.
 """
 
 import os
 import tempfile
 import unittest
+import pytest
 
+from neuroseek.embedder import Embedder
 from neuroseek.namespace_manager import NamespaceManager
 from neuroseek.namespace_manager_persistence import (
     load_namespace_manager,
@@ -21,20 +24,17 @@ def _tmp_path() -> str:
     return path
 
 
-def _build_manager() -> NamespaceManager:
-    mgr = NamespaceManager()
-    mgr.add("Paris is the capital of France", "cities")
-    mgr.add("Berlin is the capital of Germany", "cities")
-    mgr.add("dogs and puppies are great pets", "animals")
-    mgr.add("quantum mechanics and thermodynamics", "science")
-    return mgr
-
-
 class TestSaveLoadRoundTrip(unittest.TestCase):
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        mgr = NamespaceManager._from_embedder(embedder)
+        mgr.add("Paris is the capital of France", "cities")
+        mgr.add("Berlin is the capital of Germany", "cities")
+        mgr.add("dogs and puppies are great pets", "animals")
+        mgr.add("quantum mechanics and thermodynamics", "science")
+        self.mgr = mgr
         self.path = _tmp_path()
-        self.mgr = _build_manager()
 
     def tearDown(self):
         if os.path.exists(self.path):
@@ -134,7 +134,7 @@ class TestSaveLoadRoundTrip(unittest.TestCase):
     # --- Empty manager round-trip ---
 
     def test_empty_manager_round_trip(self):
-        empty = NamespaceManager()
+        empty = NamespaceManager._from_embedder(self.mgr._embedder)
         save_namespace_manager(empty, self.path)
         loaded = load_namespace_manager(self.path)
         self.assertEqual(loaded.list_namespaces(), [])
@@ -152,7 +152,7 @@ class TestSaveLoadRoundTrip(unittest.TestCase):
     # --- Custom params ---
 
     def test_custom_params_preserved(self):
-        mgr = NamespaceManager(M=8, efConstruction=50)
+        mgr = NamespaceManager._from_embedder(self.mgr._embedder, M=8, efConstruction=50)
         mgr.add("hello world", "ns")
         save_namespace_manager(mgr, self.path)
         loaded = load_namespace_manager(self.path)

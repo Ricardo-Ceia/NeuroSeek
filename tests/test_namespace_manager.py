@@ -2,10 +2,14 @@
 Comprehensive tests for neuroseek.NamespaceManager.
 
 No mocking — real embeddings, real search.
-A shared manager is built once at module level for read-only tests.
+The model is loaded once per session via the conftest fixture and injected
+into every test class via NamespaceManager._from_embedder().
 """
 
 import unittest
+import pytest
+
+from neuroseek.embedder import Embedder
 from neuroseek.namespace_manager import NamespaceManager
 
 
@@ -15,26 +19,30 @@ from neuroseek.namespace_manager import NamespaceManager
 
 class TestNamespaceManagerInit(unittest.TestCase):
 
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._embedder = embedder
+
     def test_default_model_name(self):
-        mgr = NamespaceManager()
+        mgr = NamespaceManager._from_embedder(self._embedder)
         self.assertEqual(mgr.model_name, "multi-qa-MiniLM-L6-cos-v1")
 
     def test_default_M(self):
-        self.assertEqual(NamespaceManager().M, 16)
+        self.assertEqual(NamespaceManager._from_embedder(self._embedder).M, 16)
 
     def test_default_efConstruction(self):
-        self.assertEqual(NamespaceManager().efConstruction, 200)
+        self.assertEqual(NamespaceManager._from_embedder(self._embedder).efConstruction, 200)
 
     def test_custom_params_stored(self):
-        mgr = NamespaceManager(M=8, efConstruction=50)
+        mgr = NamespaceManager._from_embedder(self._embedder, M=8, efConstruction=50)
         self.assertEqual(mgr.M, 8)
         self.assertEqual(mgr.efConstruction, 50)
 
     def test_initial_len_is_zero(self):
-        self.assertEqual(len(NamespaceManager()), 0)
+        self.assertEqual(len(NamespaceManager._from_embedder(self._embedder)), 0)
 
     def test_initial_namespaces_empty(self):
-        self.assertEqual(NamespaceManager().list_namespaces(), [])
+        self.assertEqual(NamespaceManager._from_embedder(self._embedder).list_namespaces(), [])
 
     def test_model_name_not_str_raises_type_error(self):
         with self.assertRaises(TypeError):
@@ -67,8 +75,9 @@ class TestNamespaceManagerInit(unittest.TestCase):
 
 class TestNamespaceManagement(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
 
     def test_create_namespace_appears_in_list(self):
         self.mgr.create_namespace("ns1")
@@ -122,8 +131,9 @@ class TestNamespaceManagement(unittest.TestCase):
 
 class TestNamespaceManagerAdd(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
 
     def test_add_returns_int(self):
         self.assertIsInstance(self.mgr.add("hello", "ns"), int)
@@ -188,8 +198,9 @@ class TestNamespaceManagerAdd(unittest.TestCase):
 
 class TestNamespaceManagerDelete(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
 
     def test_delete_reduces_namespace_len(self):
         self.mgr.add("hello", "ns", id=0)
@@ -223,8 +234,9 @@ class TestNamespaceManagerDelete(unittest.TestCase):
 
 class TestNamespaceManagerSearch(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
 
     def test_search_returns_list(self):
         self.mgr.add("hello world", "ns")
@@ -256,7 +268,6 @@ class TestNamespaceManagerSearch(unittest.TestCase):
         self.mgr.add("quantum physics", "science")
         animal_results = self.mgr.search("dogs", "animals", top_k=1)
         science_results = self.mgr.search("dogs", "science", top_k=1)
-        # animals namespace has the relevant doc; science does not
         self.assertEqual(animal_results[0]["text"], "dogs and puppies")
         self.assertNotEqual(science_results[0]["text"], "dogs and puppies")
 
@@ -294,8 +305,9 @@ class TestNamespaceManagerSearch(unittest.TestCase):
 
 class TestNamespaceManagerLen(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
 
     def test_namespace_len_zero_on_empty(self):
         self.mgr.create_namespace("ns")
@@ -326,8 +338,9 @@ class TestNamespaceManagerLen(unittest.TestCase):
 
 class TestNamespaceManagerAddMetadata(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
 
     def test_add_with_metadata_stores_it(self):
         self.mgr.add("hello", "ns", id=0, metadata={"lang": "en"})
@@ -392,8 +405,9 @@ class TestNamespaceManagerAddMetadata(unittest.TestCase):
 
 class TestNamespaceManagerSearchFilter(unittest.TestCase):
 
-    def setUp(self):
-        self.mgr = NamespaceManager()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.mgr = NamespaceManager._from_embedder(embedder)
         self.mgr.add_batch(
             [
                 "the cat sat on the mat",
@@ -451,7 +465,6 @@ class TestNamespaceManagerSearchFilter(unittest.TestCase):
 
     def test_filter_respects_namespace_isolation(self):
         self.mgr.add("cats meow", "other", id=0, metadata={"subject": "cat"})
-        # filter in "ns" should not see docs from "other"
         results_ns = self.mgr.search("cat", "ns", top_k=5, filter={"subject": "cat"})
         ids_ns = {r["id"] for r in results_ns}
         self.assertEqual(ids_ns, {0, 3})

@@ -55,6 +55,27 @@ class NamespaceManager:
         self._embedder = Embedder(model_name)   # shared across all namespaces
         self._namespaces: dict[str, SearchEngine] = {}
 
+    @classmethod
+    def _from_embedder(
+        cls,
+        embedder: Embedder,
+        M: int = 16,
+        efConstruction: int = 200,
+    ) -> "NamespaceManager":
+        """Create a NamespaceManager that reuses an already-loaded *embedder*.
+
+        Avoids re-loading the model when a shared embedder already exists
+        (e.g. in tests or when building multiple managers from the same model).
+        For internal / testing use only.
+        """
+        instance = object.__new__(cls)
+        instance.model_name = embedder.model_name
+        instance.M = M
+        instance.efConstruction = efConstruction
+        instance._embedder = embedder
+        instance._namespaces = {}
+        return instance
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

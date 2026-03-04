@@ -2,42 +2,52 @@
 Comprehensive tests for neuroseek.SearchEngine.
 
 No mocking — real embeddings via sentence-transformers.
-The model is loaded once at module level and shared across all tests.
+The model is loaded once per session (via the conftest fixture) and shared
+across all test classes through SearchEngine._from_embedder().
 """
 
 import unittest
+import pytest
+from neuroseek.embedder import Embedder
 from neuroseek.search_engine import SearchEngine
 
 
-# Load engine once for the whole module to avoid repeated model downloads.
-_engine: SearchEngine = SearchEngine()
-
+# ---------------------------------------------------------------------------
+# Init
+# ---------------------------------------------------------------------------
 
 class TestSearchEngineInit(unittest.TestCase):
 
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._embedder = embedder
+
     def test_default_model_name(self):
-        self.assertEqual(_engine.model_name, "multi-qa-MiniLM-L6-cos-v1")
+        e = SearchEngine._from_embedder(self._embedder)
+        self.assertEqual(e.model_name, "multi-qa-MiniLM-L6-cos-v1")
 
     def test_custom_model_name_stored(self):
         e = SearchEngine("all-MiniLM-L6-v2")
         self.assertEqual(e.model_name, "all-MiniLM-L6-v2")
 
     def test_default_M(self):
-        self.assertEqual(_engine.M, 16)
+        e = SearchEngine._from_embedder(self._embedder)
+        self.assertEqual(e.M, 16)
 
     def test_default_efConstruction(self):
-        self.assertEqual(_engine.efConstruction, 200)
+        e = SearchEngine._from_embedder(self._embedder)
+        self.assertEqual(e.efConstruction, 200)
 
     def test_custom_M(self):
-        e = SearchEngine(M=8)
+        e = SearchEngine._from_embedder(self._embedder, M=8)
         self.assertEqual(e.M, 8)
 
     def test_custom_efConstruction(self):
-        e = SearchEngine(efConstruction=50)
+        e = SearchEngine._from_embedder(self._embedder, efConstruction=50)
         self.assertEqual(e.efConstruction, 50)
 
     def test_initial_length_is_zero(self):
-        self.assertEqual(len(SearchEngine()), 0)
+        self.assertEqual(len(SearchEngine._from_embedder(self._embedder)), 0)
 
     def test_model_name_not_str_raises_type_error(self):
         with self.assertRaises(TypeError):
@@ -76,8 +86,8 @@ class TestSearchEngineInit(unittest.TestCase):
             SearchEngine(efConstruction=-5)
 
     def test_independent_instances_do_not_share_state(self):
-        a = SearchEngine()
-        b = SearchEngine()
+        a = SearchEngine._from_embedder(self._embedder)
+        b = SearchEngine._from_embedder(self._embedder)
         a.add("hello world")
         self.assertEqual(len(b), 0)
 
@@ -88,8 +98,9 @@ class TestSearchEngineInit(unittest.TestCase):
 
 class TestSearchEngineAdd(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
 
     def test_add_returns_int(self):
         self.assertIsInstance(self.engine.add("hello"), int)
@@ -144,8 +155,9 @@ class TestSearchEngineAdd(unittest.TestCase):
 
 class TestSearchEngineAddBatch(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
 
     def test_returns_list(self):
         self.assertIsInstance(self.engine.add_batch(["a", "b"]), list)
@@ -204,8 +216,9 @@ class TestSearchEngineAddBatch(unittest.TestCase):
 
 class TestSearchEngineDelete(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
 
     def test_delete_reduces_length(self):
         self.engine.add("hello", id=0)
@@ -243,8 +256,9 @@ class TestSearchEngineDelete(unittest.TestCase):
 
 class TestSearchEngineSearch(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
 
     def test_empty_engine_returns_empty_list(self):
         self.assertEqual(self.engine.search("anything"), [])
@@ -383,8 +397,9 @@ class TestSearchEngineSearch(unittest.TestCase):
 
 class TestSearchEngineLen(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
 
     def test_len_zero_initially(self):
         self.assertEqual(len(self.engine), 0)
@@ -403,19 +418,18 @@ class TestSearchEngineLen(unittest.TestCase):
         self.assertEqual(len(self.engine), 3)
 
 
-
-
 # ---------------------------------------------------------------------------
-# metadata — add() / add_batch() / search() with filter
+# metadata — add() / add_batch()
 # ---------------------------------------------------------------------------
 
 class TestSearchEngineMetadata(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
 
     def test_add_with_metadata_stores_it(self):
-        doc_id = self.engine.add("hello world", metadata={"source": "web"})
+        self.engine.add("hello world", metadata={"source": "web"})
         results = self.engine.search("hello", top_k=1)
         self.assertEqual(results[0]["metadata"], {"source": "web"})
 
@@ -455,10 +469,15 @@ class TestSearchEngineMetadata(unittest.TestCase):
             self.engine.add_batch(["a", "b"], metadata_list=[{"k": "v"}, {"bad": []}])  # type: ignore
 
 
+# ---------------------------------------------------------------------------
+# search() with filter
+# ---------------------------------------------------------------------------
+
 class TestSearchEngineFilter(unittest.TestCase):
 
-    def setUp(self):
-        self.engine = SearchEngine()
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.engine = SearchEngine._from_embedder(embedder)
         self.engine.add("Paris is the capital of France",
                         id=0, metadata={"country": "France", "type": "city"})
         self.engine.add("Berlin is the capital of Germany",
