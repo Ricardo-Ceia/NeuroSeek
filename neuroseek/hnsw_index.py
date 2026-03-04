@@ -14,6 +14,7 @@ class HNSWIndex:
         self.id_to_node = {}  # node_id -> HNSWNode
         self.entry_point = None  # Top layer node
         self.num_vectors = 0
+        self._next_id = 0  # Monotonically increasing; never decremented on delete
 
     def _get_random_layer(self):
         level = 0
@@ -92,15 +93,22 @@ class HNSWIndex:
             raise TypeError(f"vector must be a Vector, not {type(vector).__name__}")
 
         if id is None:
-            id = self.num_vectors
-            while id in self.id_to_node:
-                id += 1
+            while self._next_id in self.id_to_node:
+                self._next_id += 1
+            id = self._next_id
+            self._next_id += 1
 
         if not isinstance(id, int):
             raise TypeError(f"id must be an int, not {type(id).__name__}")
 
         if id in self.id_to_node:
             raise ValueError(f"ID {id} already exists")
+
+        # Keep _next_id strictly ahead of every manually-supplied ID so that
+        # future auto-IDs never collide with IDs that were (or will be) used
+        # manually — even if those manual IDs have since been deleted.
+        if id >= self._next_id:
+            self._next_id = id + 1
 
         node_layer = self._get_random_layer()
         node = HNSWNode(id=id, vector=vector, layer=node_layer)

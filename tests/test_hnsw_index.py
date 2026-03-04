@@ -582,5 +582,76 @@ class TestHNSWIndexLen(unittest.TestCase):
         self.assertEqual(len(idx), 4)
 
 
+class TestHNSWIndexAutoId(unittest.TestCase):
+    """Bug #5 — auto-ID must never collide after deletions."""
+
+    def test_auto_id_starts_at_zero(self):
+        random.seed(0)
+        idx = HNSWIndex()
+        returned = idx.add_vector(make_vector([1.0, 0.0]))
+        self.assertEqual(returned, 0)
+
+    def test_auto_ids_are_unique_sequential(self):
+        random.seed(0)
+        idx = HNSWIndex()
+        ids = [idx.add_vector(make_vector([float(i), 1.0])) for i in range(5)]
+        self.assertEqual(len(set(ids)), 5)
+
+    def test_auto_id_does_not_collide_with_manual_id(self):
+        # Insert manual id=0, then auto — must NOT produce 0 again
+        random.seed(0)
+        idx = HNSWIndex()
+        idx.add_vector(make_vector([1.0, 0.0]), id=0)
+        auto_id = idx.add_vector(make_vector([0.0, 1.0]))
+        self.assertNotEqual(auto_id, 0)
+
+    def test_auto_id_no_collision_after_deletion(self):
+        # Classic collision scenario: insert id=0, delete it, insert auto.
+        # num_vectors would have been decremented back to 0 → collision.
+        # _next_id must NOT reuse 0.
+        random.seed(0)
+        idx = HNSWIndex()
+        idx.add_vector(make_vector([1.0, 0.0]), id=0)
+        idx.delete_vector(0)
+        auto_id = idx.add_vector(make_vector([0.0, 1.0]))
+        self.assertNotEqual(auto_id, 0)
+        self.assertIn(auto_id, idx.id_to_node)
+
+    def test_auto_id_no_collision_mixed_manual_and_auto_after_delete(self):
+        # Insert auto(0), manual(1), auto(should be 2), delete 0,
+        # then auto again — must not pick 0.
+        random.seed(0)
+        idx = HNSWIndex()
+        a0 = idx.add_vector(make_vector([1.0, 0.0]))          # auto → 0
+        idx.add_vector(make_vector([0.0, 1.0]), id=1)         # manual 1
+        a2 = idx.add_vector(make_vector([1.0, 1.0]))          # auto → 2
+        idx.delete_vector(a0)                                  # delete 0
+        a_new = idx.add_vector(make_vector([0.5, 0.5]))       # auto → must not be 0
+        self.assertNotIn(a_new, [a0])
+        self.assertIn(a_new, idx.id_to_node)
+        # All remaining IDs must be unique
+        all_ids = list(idx.id_to_node.keys())
+        self.assertEqual(len(all_ids), len(set(all_ids)))
+
+    def test_auto_id_skips_occupied_manual_ids(self):
+        # Manually occupy 0,1,2 then ask for auto — must skip all three
+        random.seed(0)
+        idx = HNSWIndex()
+        for i in range(3):
+            idx.add_vector(make_vector([float(i), 1.0]), id=i)
+        auto_id = idx.add_vector(make_vector([3.0, 1.0]))
+        self.assertNotIn(auto_id, [0, 1, 2])
+        self.assertIn(auto_id, idx.id_to_node)
+
+    def test_next_id_never_decremented_on_delete(self):
+        # _next_id should only ever go up
+        random.seed(0)
+        idx = HNSWIndex()
+        idx.add_vector(make_vector([1.0, 0.0]))   # _next_id becomes 1
+        before = idx._next_id
+        idx.delete_vector(0)
+        self.assertGreaterEqual(idx._next_id, before)
+
+
 if __name__ == "__main__":
     unittest.main()
