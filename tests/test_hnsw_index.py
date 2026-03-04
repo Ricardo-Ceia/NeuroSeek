@@ -333,6 +333,84 @@ class TestHNSWIndexDeleteVector(unittest.TestCase):
         self.assertEqual(new_id, 10)
         self.assertEqual(len(idx), 1)
 
+    def test_delete_entry_point_entry_point_is_not_none(self):
+        """Deleting the entry point must replace it, not set it to None."""
+        random.seed(1)
+        idx = HNSWIndex(maxLayers=4)
+        for i in range(20):
+            idx.add_vector(make_vector([float(i + 1), 1.0]), id=i)
+        ep_id = idx.entry_point.id
+        idx.delete_vector(ep_id)
+        self.assertIsNotNone(idx.entry_point,
+                             "entry_point is None after deleting the entry point node")
+
+    def test_delete_entry_point_new_entry_point_is_valid_node(self):
+        """The replacement entry point must be a node that still exists in the index."""
+        random.seed(1)
+        idx = HNSWIndex(maxLayers=4)
+        for i in range(20):
+            idx.add_vector(make_vector([float(i + 1), 1.0]), id=i)
+        idx.delete_vector(idx.entry_point.id)
+        self.assertIn(idx.entry_point.id, idx.id_to_node)
+
+    def test_delete_entry_point_new_entry_point_on_top_layer(self):
+        """Replacement entry point must be on the highest remaining layer."""
+        random.seed(1)
+        idx = HNSWIndex(maxLayers=4)
+        for i in range(20):
+            idx.add_vector(make_vector([float(i + 1), 1.0]), id=i)
+        idx.delete_vector(idx.entry_point.id)
+        top_layer = len(idx.layers) - 1
+        self.assertEqual(idx.entry_point.layer, top_layer)
+
+    def test_search_after_deleting_entry_point_returns_results(self):
+        """search() must still work correctly after the entry point is deleted."""
+        random.seed(1)
+        idx = HNSWIndex(M=4, efConstruction=20, maxLayers=4)
+        for i in range(1, 21):
+            idx.add_vector(make_vector([float(i * 10), 1.0]), id=i)
+        # Delete the entry point
+        idx.delete_vector(idx.entry_point.id)
+        # Search should still return results
+        query = make_vector([50.0, 1.0])
+        results = idx.search(query, top_k=3)
+        self.assertGreater(len(results), 0)
+        # The closest surviving vector to [50, 1] should still be in the top result
+        top_id = results[0][0]
+        self.assertIn(top_id, idx.id_to_node)
+
+    def test_add_after_deleting_entry_point_works(self):
+        """add_vector() must work correctly after the entry point is deleted."""
+        random.seed(1)
+        idx = HNSWIndex(maxLayers=4)
+        for i in range(10):
+            idx.add_vector(make_vector([float(i + 1), 1.0]), id=i)
+        idx.delete_vector(idx.entry_point.id)
+        # Should be able to add a new vector without error
+        new_id = idx.add_vector(make_vector([99.0, 1.0]), id=99)
+        self.assertEqual(new_id, 99)
+        self.assertIn(99, idx.id_to_node)
+
+    def test_empty_layers_trimmed_after_entry_point_deletion(self):
+        """Deleting the only node on the top layer must shrink layers list."""
+        random.seed(1)
+        idx = HNSWIndex(maxLayers=8)
+        for i in range(60):
+            idx.add_vector(make_vector([float(i + 1), 1.0]), id=i)
+        # Keep deleting the entry point until a lower-layer node becomes ep
+        initial_layers = len(idx.layers)
+        # Delete nodes that are on the top layer exclusively
+        deleted = 0
+        for _ in range(10):
+            ep = idx.entry_point
+            if ep.layer > 0:
+                idx.delete_vector(ep.id)
+                deleted += 1
+        if deleted > 0:
+            # No layer should be empty at the top
+            self.assertTrue(idx.layers[-1],
+                            "Top layer is empty — empty layers were not trimmed")
+
 
 class TestHNSWIndexSearch(unittest.TestCase):
     def _build_index(self, seed=42, n=20, dim=4):

@@ -210,9 +210,28 @@ class HNSWIndex:
         self.num_vectors -= 1
 
         if self.entry_point and self.entry_point.id == id:
-            self.entry_point = None
+            self._repair_entry_point()
 
         return node.vector
+
+    def _repair_entry_point(self):
+        """Select a new entry point after the current one has been deleted.
+
+        Scans layers from highest to lowest and picks any surviving node.
+        Also trims trailing empty layers so len(self.layers) stays accurate.
+        If the index is now empty, entry_point is set to None.
+        """
+        # Remove empty top layers
+        while self.layers and not self.layers[-1]:
+            self.layers.pop()
+
+        # Walk remaining layers top-down for a new entry point
+        self.entry_point = None
+        for layer_dict in reversed(self.layers):
+            if layer_dict:
+                ep_id = next(iter(layer_dict))
+                self.entry_point = self.id_to_node[ep_id]
+                break
 
     def search(self, query, top_k=5, ef=10):
         if not isinstance(query, Vector):
