@@ -1,3 +1,4 @@
+import heapq
 import random
 import math
 from neuroseek.vector import Vector
@@ -23,19 +24,33 @@ class HNSWIndex:
     def _distance(self, v1, v2):
         return 1 - v1.cosine_similarity(v2)  # Convert similarity to distance
 
-    def _search_layer_from(self, query, entry_node, ef, layer):
+    def _search_layer_from(self, query, entry_node, ef, layer, exclude_id=None):
         """Search a single layer starting from a given entry node.
 
         Unlike the old _search_layer, this accepts an explicit entry_node and
         never reads or writes self.entry_point, making it safe to call from
         both add_vector (construction) and search (query time).
+
+        If entry_node does not participate in the requested layer, the search
+        falls back to any node that does exist in that layer (skipping
+        exclude_id, which is used to avoid the newly-inserted node during
+        construction).
         """
         if not self.layers or layer >= len(self.layers) or not self.layers[layer]:
             return []
 
+        # If the provided entry_node is not in this layer, fall back to any
+        # node that is — skipping exclude_id (the node being inserted).
+        if entry_node.id not in self.layers[layer]:
+            fallback_id = next(
+                (nid for nid in self.layers[layer] if nid != exclude_id),
+                None
+            )
+            if fallback_id is None:
+                return []  # layer has only the new node itself
+            entry_node = self.id_to_node[fallback_id]
+
         visited = set()
-        # Min-heap: (distance, node_id) — smallest distance at top
-        import heapq
         entry_dist = self._distance(query, entry_node.vector)
         # candidates: min-heap by distance (closest first)
         candidates = [(entry_dist, entry_node.id)]
@@ -96,11 +111,10 @@ class HNSWIndex:
         while len(self.layers) <= node_layer:
             self.layers.append({})
 
-        # Register node in every layer up to its assigned layer
-        for lyr in range(node_layer + 1):
-            self.layers[lyr][id] = node
-
         if self.entry_point is None:
+            # First node — register and make it the entry point immediately
+            for lyr in range(node_layer + 1):
+                self.layers[lyr][id] = node
             self.entry_point = node
             return id
 
@@ -108,18 +122,27 @@ class HNSWIndex:
 
         # Phase 1: greedily descend layers ABOVE node_layer — find the best
         # entry point for the connection-building phase without adding edges.
+        # The new node is NOT yet registered in the layers during this phase so
+        # it does not interfere with the search.
         for layer in reversed(range(node_layer + 1, len(self.layers))):
             layer_results = self._search_layer_from(vector, ep, ef=1, layer=layer)
             if layer_results:
                 ep = self.id_to_node[layer_results[0][0]]
 
-        # Phase 2: build connections on layers 0..node_layer
+        # Phase 2: build connections on layers 0..node_layer.
+        # Register the node layer by layer as we descend so it is visible to
+        # back-connections but does not seed its own search.
         for layer in reversed(range(node_layer + 1)):
-            neighbors = self._search_layer_from(vector, ep, self.efConstruction, layer)
+            self.layers[layer][id] = node  # register before searching this layer
+            neighbors = self._search_layer_from(
+                vector, ep, self.efConstruction, layer, exclude_id=id
+            )
             for neighbor_id, dist in neighbors[:self.M]:
                 neighbor_node = self.id_to_node[neighbor_id]
                 node.add_connection(neighbor_id, dist, layer)
-                neighbor_node.add_connection(id, dist, layer)
+                # Only add a back-connection if the neighbor actually exists at this layer
+                if neighbor_node.layer >= layer:
+                    neighbor_node.add_connection(id, dist, layer)
             if neighbors:
                 # Best neighbor in this layer is the entry point for the layer below
                 ep = self.id_to_node[neighbors[0][0]]
