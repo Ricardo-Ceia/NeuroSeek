@@ -464,10 +464,24 @@ class TestVector(unittest.TestCase):
         v.data = [1, 2, 3]
         self.assertTrue(v == v)
 
-    def test_eq_non_vector_raises(self):
+    def test_eq_non_vector_returns_false(self):
+        # __eq__ must return NotImplemented for non-Vector types so Python can
+        # fall back to identity comparison — the result is False, not TypeError.
         v = Vector(3)
-        with self.assertRaises(TypeError):
+        v.data = [1, 2, 3]
+        self.assertFalse(v == [1, 2, 3])
+        self.assertFalse(v == 42)
+        self.assertFalse(v == None)
+        self.assertFalse(v == "hello")
+
+    def test_eq_non_vector_does_not_raise(self):
+        v = Vector(3)
+        try:
             _ = v == [1, 2, 3]
+            _ = v == None
+            _ = v == 0
+        except TypeError:
+            self.fail("__eq__ raised TypeError for non-Vector — should return NotImplemented")
 
     def test_nequal_vectors(self):
         v1 = Vector(3)

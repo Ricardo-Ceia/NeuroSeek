@@ -80,7 +80,7 @@ class Vector:
 
     def __eq__(self, other):
         if not isinstance(other, Vector):
-            raise TypeError(f"unsupported operand type(s) for ==: 'Vector' and '{type(other).__name__}'")
+            return NotImplemented
         if len(self) != len(other):
             return False
         for i in range(len(self)):
