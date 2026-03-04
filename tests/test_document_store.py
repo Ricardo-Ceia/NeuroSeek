@@ -370,5 +370,140 @@ class TestDocumentStoreContains(unittest.TestCase):
         self.assertNotIn(5, self.store)
 
 
+# ---------------------------------------------------------------------------
+# metadata — add() / get_metadata() / matches_filter()
+# ---------------------------------------------------------------------------
+
+class TestDocumentStoreMetadata(unittest.TestCase):
+
+    def setUp(self):
+        self.store = DocumentStore()
+
+    # --- add with metadata ---
+
+    def test_add_with_metadata_returns_id(self):
+        self.assertIsInstance(self.store.add("hello", metadata={"tag": "a"}), int)
+
+    def test_metadata_retrievable(self):
+        self.store.add("hello", id=0, metadata={"source": "web", "year": 2024})
+        self.assertEqual(self.store.get_metadata(0), {"source": "web", "year": 2024})
+
+    def test_no_metadata_returns_empty_dict(self):
+        self.store.add("hello", id=0)
+        self.assertEqual(self.store.get_metadata(0), {})
+
+    def test_none_metadata_treated_as_empty(self):
+        self.store.add("hello", id=0, metadata=None)
+        self.assertEqual(self.store.get_metadata(0), {})
+
+    def test_metadata_is_a_copy(self):
+        meta = {"key": "value"}
+        self.store.add("hello", id=0, metadata=meta)
+        meta["key"] = "mutated"
+        self.assertEqual(self.store.get_metadata(0)["key"], "value")
+
+    def test_get_metadata_missing_id_raises_key_error(self):
+        with self.assertRaises(KeyError):
+            self.store.get_metadata(99)
+
+    def test_get_metadata_non_int_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.get_metadata("0")  # type: ignore
+
+    def test_metadata_str_value_accepted(self):
+        self.store.add("hello", id=0, metadata={"k": "v"})
+        self.assertEqual(self.store.get_metadata(0)["k"], "v")
+
+    def test_metadata_int_value_accepted(self):
+        self.store.add("hello", id=0, metadata={"n": 42})
+        self.assertEqual(self.store.get_metadata(0)["n"], 42)
+
+    def test_metadata_float_value_accepted(self):
+        self.store.add("hello", id=0, metadata={"score": 0.9})
+        self.assertAlmostEqual(self.store.get_metadata(0)["score"], 0.9)
+
+    def test_metadata_bool_value_accepted(self):
+        self.store.add("hello", id=0, metadata={"active": True})
+        self.assertEqual(self.store.get_metadata(0)["active"], True)
+
+    def test_metadata_non_dict_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.add("hello", metadata="bad")  # type: ignore
+
+    def test_metadata_non_str_key_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.add("hello", metadata={1: "v"})  # type: ignore
+
+    def test_metadata_invalid_value_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.add("hello", metadata={"k": [1, 2]})  # type: ignore
+
+    def test_upsert_replaces_metadata(self):
+        self.store.add("hello", id=0, metadata={"old": "yes"})
+        self.store.add("hello", id=0, metadata={"new": "yes"})
+        self.assertNotIn("old", self.store.get_metadata(0))
+        self.assertIn("new", self.store.get_metadata(0))
+
+    # --- matches_filter ---
+
+    def test_none_filter_matches_everything(self):
+        self.store.add("hello", id=0, metadata={"tag": "a"})
+        self.assertTrue(self.store.matches_filter(0, None))
+
+    def test_empty_filter_matches_everything(self):
+        self.store.add("hello", id=0, metadata={"tag": "a"})
+        self.assertTrue(self.store.matches_filter(0, {}))
+
+    def test_matching_filter_returns_true(self):
+        self.store.add("hello", id=0, metadata={"tag": "news", "year": 2024})
+        self.assertTrue(self.store.matches_filter(0, {"tag": "news"}))
+
+    def test_non_matching_filter_returns_false(self):
+        self.store.add("hello", id=0, metadata={"tag": "news"})
+        self.assertFalse(self.store.matches_filter(0, {"tag": "sports"}))
+
+    def test_partial_filter_all_match(self):
+        self.store.add("hello", id=0, metadata={"tag": "news", "year": 2024})
+        self.assertTrue(self.store.matches_filter(0, {"tag": "news", "year": 2024}))
+
+    def test_partial_filter_one_mismatch(self):
+        self.store.add("hello", id=0, metadata={"tag": "news", "year": 2024})
+        self.assertFalse(self.store.matches_filter(0, {"tag": "news", "year": 2023}))
+
+    def test_filter_key_absent_returns_false(self):
+        self.store.add("hello", id=0, metadata={"tag": "news"})
+        self.assertFalse(self.store.matches_filter(0, {"missing_key": "value"}))
+
+    def test_filter_on_doc_with_no_metadata_returns_false(self):
+        self.store.add("hello", id=0)
+        self.assertFalse(self.store.matches_filter(0, {"tag": "news"}))
+
+    # --- add_batch with metadata_list ---
+
+    def test_add_batch_with_metadata_list(self):
+        ids = self.store.add_batch(
+            ["doc a", "doc b"],
+            metadata_list=[{"tag": "x"}, {"tag": "y"}],
+        )
+        self.assertEqual(self.store.get_metadata(ids[0])["tag"], "x")
+        self.assertEqual(self.store.get_metadata(ids[1])["tag"], "y")
+
+    def test_add_batch_metadata_list_none_entries(self):
+        ids = self.store.add_batch(["a", "b"], metadata_list=[{"k": "v"}, None])
+        self.assertEqual(self.store.get_metadata(ids[0]), {"k": "v"})
+        self.assertEqual(self.store.get_metadata(ids[1]), {})
+
+    def test_add_batch_metadata_list_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            self.store.add_batch(["a", "b"], metadata_list=[{"k": "v"}])
+
+    def test_add_batch_invalid_metadata_leaves_store_unchanged(self):
+        try:
+            self.store.add_batch(["a", "b"], metadata_list=[{"k": "v"}, {"bad": [1]}])  # type: ignore
+        except TypeError:
+            pass
+        self.assertEqual(len(self.store), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
