@@ -1,5 +1,19 @@
-from sentence_transformers import SentenceTransformer
-from neuroseek.core.vector import Vector
+import logging
+import os
+
+# Suppress model-loading noise from transformers / safetensors / huggingface_hub
+# before any of those packages are imported.
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+import transformers as _transformers  # noqa: E402
+
+_transformers.logging.set_verbosity_error()
+_transformers.logging.disable_progress_bar()
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
+from sentence_transformers import SentenceTransformer  # noqa: E402
+from neuroseek.core.vector import Vector  # noqa: E402
 
 
 DEFAULT_MODEL = "multi-qa-MiniLM-L6-cos-v1"

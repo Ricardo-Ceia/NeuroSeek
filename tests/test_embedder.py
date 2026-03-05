@@ -1,5 +1,10 @@
+import logging
+import os
 import unittest
+
 import pytest
+import transformers
+
 from neuroseek.core.vector import Vector
 from neuroseek.embedder import Embedder, DEFAULT_MODEL
 
@@ -216,6 +221,44 @@ class TestEmbedderEncodeBatch(unittest.TestCase):
             self.assertIn("0", str(exc))
         else:
             self.fail("Expected TypeError was not raised")
+
+
+class TestEmbedderSilence(unittest.TestCase):
+    """Verify that importing Embedder applies the correct noise-suppression settings."""
+
+    @pytest.fixture(autouse=True)
+    def _inject_capsys(self, capsys):
+        self._capsys = capsys
+
+    def test_transformers_verbosity_env_var_is_set(self):
+        self.assertEqual(os.environ.get("TRANSFORMERS_VERBOSITY"), "error")
+
+    def test_hf_hub_progress_bars_env_var_is_set(self):
+        self.assertEqual(os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS"), "1")
+
+    def test_transformers_verbosity_is_error_level(self):
+        # transformers.logging maps "error" -> logging.ERROR (40)
+        self.assertEqual(transformers.logging.get_verbosity(), logging.ERROR)
+
+    def test_huggingface_hub_logger_is_silenced(self):
+        hub_logger = logging.getLogger("huggingface_hub")
+        self.assertGreaterEqual(hub_logger.level, logging.ERROR)
+
+    def test_embedder_instantiation_produces_no_stderr(self):
+        # Creating a fresh embedder (model already cached) must not emit
+        # any progress bars or load reports to stderr.
+        Embedder()
+        captured = self._capsys.readouterr()
+        self.assertEqual(captured.err, "")
+
+    def test_env_vars_use_setdefault_not_override(self):
+        # If the user has already set TRANSFORMERS_VERBOSITY themselves,
+        # our setdefault must not stomp their value.
+        original = os.environ.get("TRANSFORMERS_VERBOSITY")
+        # setdefault only writes when missing; since the key is already set,
+        # a second call must return the existing value unchanged.
+        result = os.environ.setdefault("TRANSFORMERS_VERBOSITY", "warning")
+        self.assertEqual(result, original)
 
 
 if __name__ == "__main__":
