@@ -16,6 +16,9 @@ dev = [
     "pytest>=9.0",
 ]
 
+[project.scripts]
+neuroseek = "neuroseek.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["neuroseek*"]
