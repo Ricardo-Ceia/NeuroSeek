@@ -2,7 +2,7 @@ import unittest
 import os
 import random
 from neuroseek import Vector, HNSWIndex
-from neuroseek.hnsw_persistence import save_hnsw_index, load_hnsw_index
+from neuroseek.persistence.hnsw_persistence import save_hnsw_index, load_hnsw_index
 
 
 class TestHNSWPersistence(unittest.TestCase):

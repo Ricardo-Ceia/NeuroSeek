@@ -1,5 +1,5 @@
 import pickle
-from neuroseek.vector import Vector
+from neuroseek.core.vector import Vector
 
 
 def save_index(index, filename):

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from neuroseek.ingestor import (
+from neuroseek.ingestion.ingestor import (
     SUPPORTED_EXTENSIONS,
     ingest_directory,
     ingest_file,

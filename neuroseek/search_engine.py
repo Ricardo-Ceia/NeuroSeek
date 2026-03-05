@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Optional
 
 from neuroseek.embedder import Embedder, DEFAULT_MODEL
-from neuroseek.hnsw_index import HNSWIndex
+from neuroseek.core.hnsw_index import HNSWIndex
 from neuroseek.document_store import DocumentStore, _validate_metadata
 
 # How many extra candidates to fetch from HNSW when a metadata filter is

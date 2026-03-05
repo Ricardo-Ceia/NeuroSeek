@@ -1,7 +1,7 @@
 import unittest
 import os
 from neuroseek import Vector, Index
-from neuroseek.persistence import save_index, load_index
+from neuroseek.persistence.index_persistence import save_index, load_index
 
 
 class TestPersistence(unittest.TestCase):

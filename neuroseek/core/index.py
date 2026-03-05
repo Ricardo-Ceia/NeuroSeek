@@ -1,4 +1,4 @@
-from neuroseek.vector import Vector
+from neuroseek.core.vector import Vector
 
 
 class Index:

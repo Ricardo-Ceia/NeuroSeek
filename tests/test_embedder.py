@@ -1,6 +1,6 @@
 import unittest
 import pytest
-from neuroseek.vector import Vector
+from neuroseek.core.vector import Vector
 from neuroseek.embedder import Embedder, DEFAULT_MODEL
 
 

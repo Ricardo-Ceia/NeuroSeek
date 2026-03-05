@@ -27,10 +27,10 @@ import os
 import sys
 from pathlib import Path
 
-from neuroseek.chunker import chunk_text
-from neuroseek.ingestor import ingest_directory, ingest_file
+from neuroseek.ingestion.chunker import chunk_text
+from neuroseek.ingestion.ingestor import ingest_directory, ingest_file
 from neuroseek.namespace_manager import NamespaceManager
-from neuroseek.namespace_manager_persistence import (
+from neuroseek.persistence.namespace_manager_persistence import (
     load_namespace_manager,
     save_namespace_manager,
 )

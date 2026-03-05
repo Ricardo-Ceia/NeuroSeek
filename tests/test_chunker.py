@@ -6,7 +6,7 @@ Run with:
 """
 
 import pytest
-from neuroseek.chunker import chunk_text
+from neuroseek.ingestion.chunker import chunk_text
 
 
 # ---------------------------------------------------------------------------

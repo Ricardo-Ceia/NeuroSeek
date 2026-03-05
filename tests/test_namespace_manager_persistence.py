@@ -12,7 +12,7 @@ import pytest
 
 from neuroseek.embedder import Embedder
 from neuroseek.namespace_manager import NamespaceManager
-from neuroseek.namespace_manager_persistence import (
+from neuroseek.persistence.namespace_manager_persistence import (
     load_namespace_manager,
     save_namespace_manager,
 )

@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer
-from neuroseek.vector import Vector
+from neuroseek.core.vector import Vector
 
 
 DEFAULT_MODEL = "multi-qa-MiniLM-L6-cos-v1"

@@ -12,7 +12,7 @@ import pytest
 
 from neuroseek.embedder import Embedder
 from neuroseek.search_engine import SearchEngine
-from neuroseek.search_engine_persistence import load_search_engine, save_search_engine
+from neuroseek.persistence.search_engine_persistence import load_search_engine, save_search_engine
 
 
 _DOCS = [

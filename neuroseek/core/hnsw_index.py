@@ -1,8 +1,8 @@
 import heapq
 import random
 import math
-from neuroseek.vector import Vector
-from neuroseek.hnsw_node import HNSWNode
+from neuroseek.core.vector import Vector
+from neuroseek.core.hnsw_node import HNSWNode
 
 
 class HNSWIndex:
