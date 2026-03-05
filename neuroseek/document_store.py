@@ -242,6 +242,32 @@ class DocumentStore:
         meta = self._store[id]["metadata"]
         return all(meta.get(k) == v for k, v in filter.items())
 
+    def list_sources(self, key: str = "filename") -> set:
+        """Return a set of all distinct values for *key* across all document metadata.
+
+        Parameters
+        ----------
+        key:
+            The metadata key to collect values for. Defaults to ``"filename"``.
+
+        Returns
+        -------
+        set
+            Unique values found. Documents that do not have *key* in their
+            metadata are silently ignored.
+        """
+        if not isinstance(key, str):
+            raise TypeError(
+                f"key must be a str, got {type(key).__name__}"
+            )
+        if not key.strip():
+            raise ValueError("key must not be empty or whitespace-only")
+        return {
+            entry["metadata"][key]
+            for entry in self._store.values()
+            if key in entry["metadata"]
+        }
+
     def __len__(self) -> int:
         """Return the number of documents currently in the store."""
         return len(self._store)

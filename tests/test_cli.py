@@ -308,6 +308,82 @@ class TestCmdIndex:
 
 
 # ---------------------------------------------------------------------------
+# cmd_index — deduplication
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_patch_sentence_transformer")
+class TestCmdIndexDeduplication:
+    def test_reindex_same_file_skips_it(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "hello world this is a test document")
+        run(["index", str(f)], capsys, idx)
+        count_after_first = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+
+        run(["index", str(f)], capsys, idx)
+        count_after_second = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+
+        assert count_after_first == count_after_second
+
+    def test_reindex_prints_skipping_message(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "hello world this is a test document")
+        run(["index", str(f)], capsys, idx)
+        _, out, _ = run(["index", str(f)], capsys, idx)
+        assert "Skipping" in out
+        assert "doc.txt" in out
+
+    def test_reindex_exit_zero(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "hello world this is a test document")
+        run(["index", str(f)], capsys, idx)
+        code, _, _ = run(["index", str(f)], capsys, idx)
+        assert code == 0
+
+    def test_reindex_all_files_prints_nothing_to_do(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "hello world this is a test document")
+        run(["index", str(f)], capsys, idx)
+        _, out, _ = run(["index", str(f)], capsys, idx)
+        assert "Nothing to do" in out or "already indexed" in out.lower()
+
+    def test_new_file_indexed_alongside_existing(self, tmp, idx, capsys):
+        f1 = write_file(tmp, "a.txt", "first document content alpha")
+        f2 = write_file(tmp, "b.txt", "second document content beta")
+        run(["index", str(f1)], capsys, idx)
+        count_after_first = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+
+        run(["index", str(tmp)], capsys, idx)
+        count_after_dir = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+
+        # b.txt should be added; a.txt should be skipped
+        assert count_after_dir > count_after_first
+
+    def test_directory_reindex_skips_all_already_indexed(self, tmp, idx, capsys):
+        write_file(tmp, "a.txt", "alpha content here")
+        write_file(tmp, "b.txt", "beta content here")
+        run(["index", str(tmp)], capsys, idx)
+        count_first = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+
+        run(["index", str(tmp)], capsys, idx)
+        count_second = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+
+        assert count_first == count_second
+
+    def test_directory_reindex_prints_skipped_filenames(self, tmp, idx, capsys):
+        write_file(tmp, "a.txt", "alpha content here")
+        write_file(tmp, "b.txt", "beta content here")
+        run(["index", str(tmp)], capsys, idx)
+        _, out, _ = run(["index", str(tmp)], capsys, idx)
+        assert "a.txt" in out
+        assert "b.txt" in out
+
+    def test_dedup_is_namespace_scoped(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "hello world this is a test document")
+        run(["index", str(f), "--namespace", "ns1"], capsys, idx)
+        # Same file in a different namespace should NOT be skipped
+        code, out, _ = run(["index", str(f), "--namespace", "ns2"], capsys, idx)
+        assert code == 0
+        assert "Indexed" in out
+
+
+# ---------------------------------------------------------------------------
 # cmd_search
 # ---------------------------------------------------------------------------
 

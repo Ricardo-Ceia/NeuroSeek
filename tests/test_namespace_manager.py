@@ -475,5 +475,53 @@ class TestNamespaceManagerSearchFilter(unittest.TestCase):
         self.assertEqual(scores, sorted(scores, reverse=True))
 
 
+class TestNamespaceManagerListSources(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._mgr = NamespaceManager._from_embedder(embedder)
+
+    def test_empty_namespace_returns_empty_set(self):
+        self._mgr.create_namespace("ns")
+        self.assertEqual(self._mgr.list_sources("ns"), set())
+
+    def test_single_doc_returns_its_filename(self):
+        self._mgr.add("hello", namespace="ns", metadata={"filename": "a.txt"})
+        self.assertEqual(self._mgr.list_sources("ns"), {"a.txt"})
+
+    def test_multiple_chunks_same_file_returns_one_entry(self):
+        self._mgr.add("chunk 1", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.add("chunk 2", namespace="ns", metadata={"filename": "a.txt"})
+        self.assertEqual(self._mgr.list_sources("ns"), {"a.txt"})
+
+    def test_multiple_files_returns_all(self):
+        self._mgr.add("text a", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.add("text b", namespace="ns", metadata={"filename": "b.md"})
+        self.assertEqual(self._mgr.list_sources("ns"), {"a.txt", "b.md"})
+
+    def test_sources_are_namespace_isolated(self):
+        self._mgr.add("text", namespace="ns1", metadata={"filename": "a.txt"})
+        self._mgr.add("text", namespace="ns2", metadata={"filename": "b.txt"})
+        self.assertEqual(self._mgr.list_sources("ns1"), {"a.txt"})
+        self.assertEqual(self._mgr.list_sources("ns2"), {"b.txt"})
+
+    def test_nonexistent_namespace_raises_key_error(self):
+        with self.assertRaises(KeyError):
+            self._mgr.list_sources("does_not_exist")
+
+    def test_custom_key(self):
+        self._mgr.add("text", namespace="ns", metadata={"path": "/docs/readme.md"})
+        self.assertEqual(self._mgr.list_sources("ns", key="path"), {"/docs/readme.md"})
+
+    def test_returns_set_type(self):
+        self._mgr.add("text", namespace="ns", metadata={"filename": "a.txt"})
+        self.assertIsInstance(self._mgr.list_sources("ns"), set)
+
+    def test_docs_without_filename_are_ignored(self):
+        self._mgr.add("no filename", namespace="ns", metadata={"other": "x"})
+        self._mgr.add("with filename", namespace="ns", metadata={"filename": "f.txt"})
+        self.assertEqual(self._mgr.list_sources("ns"), {"f.txt"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -107,6 +107,32 @@ def cmd_index(args: argparse.Namespace) -> int:
         print(f"Error: path does not exist: {str(target)!r}", file=sys.stderr)
         return 1
 
+    # --- load manager and detect already-indexed files ---
+    manager = _load_manager(index_path)
+
+    if manager.list_namespaces() and namespace in manager.list_namespaces():
+        already_indexed = manager.list_sources(namespace, key="filename")
+    else:
+        already_indexed = set()
+
+    skipped = [
+        (text, meta) for text, meta in pairs
+        if meta.get("filename") in already_indexed
+    ]
+    pairs = [
+        (text, meta) for text, meta in pairs
+        if meta.get("filename") not in already_indexed
+    ]
+
+    if skipped:
+        skipped_names = sorted({meta.get("filename", "?") for _, meta in skipped})
+        for name in skipped_names:
+            print(f"Skipping (already indexed): {name}")
+
+    if not pairs:
+        print("All files are already indexed. Nothing to do.")
+        return 0
+
     # --- chunk ---
     all_chunks: list[str] = []
     all_metadata: list[dict] = []
@@ -127,7 +153,6 @@ def cmd_index(args: argparse.Namespace) -> int:
         return 0
 
     # --- load, add, save ---
-    manager = _load_manager(index_path)
     manager.add_batch(all_chunks, namespace=namespace, metadata_list=all_metadata)
     _save_manager(manager, index_path)
 

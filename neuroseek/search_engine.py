@@ -268,6 +268,21 @@ class SearchEngine:
                 for doc_id, score in raw_results
             ]
 
+    def list_sources(self, key: str = "filename") -> set:
+        """Return the set of distinct values for metadata *key* across all documents.
+
+        Parameters
+        ----------
+        key:
+            The metadata key to aggregate. Defaults to ``"filename"``.
+
+        Returns
+        -------
+        set
+            Unique values for *key*. Documents without *key* are ignored.
+        """
+        return self._store.list_sources(key)
+
     def __len__(self) -> int:
         """Return the number of documents currently in the engine."""
         return len(self._index)

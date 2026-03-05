@@ -505,5 +505,83 @@ class TestDocumentStoreMetadata(unittest.TestCase):
         self.assertEqual(len(self.store), 0)
 
 
+class TestDocumentStoreListSources(unittest.TestCase):
+
+    def setUp(self):
+        self.store = DocumentStore()
+
+    def test_empty_store_returns_empty_set(self):
+        self.assertEqual(self.store.list_sources(), set())
+
+    def test_single_doc_with_filename_returns_that_filename(self):
+        self.store.add("text", metadata={"filename": "a.txt"})
+        self.assertEqual(self.store.list_sources(), {"a.txt"})
+
+    def test_multiple_docs_same_file_returns_one_entry(self):
+        self.store.add("chunk 1", metadata={"filename": "a.txt"})
+        self.store.add("chunk 2", metadata={"filename": "a.txt"})
+        self.store.add("chunk 3", metadata={"filename": "a.txt"})
+        self.assertEqual(self.store.list_sources(), {"a.txt"})
+
+    def test_multiple_docs_different_files_returns_all(self):
+        self.store.add("text a", metadata={"filename": "a.txt"})
+        self.store.add("text b", metadata={"filename": "b.txt"})
+        self.store.add("text c", metadata={"filename": "c.txt"})
+        self.assertEqual(self.store.list_sources(), {"a.txt", "b.txt", "c.txt"})
+
+    def test_docs_without_key_are_ignored(self):
+        self.store.add("no filename", metadata={"other": "value"})
+        self.store.add("with filename", metadata={"filename": "a.txt"})
+        self.assertEqual(self.store.list_sources(), {"a.txt"})
+
+    def test_docs_with_no_metadata_are_ignored(self):
+        self.store.add("no meta at all")
+        self.store.add("with meta", metadata={"filename": "b.txt"})
+        self.assertEqual(self.store.list_sources(), {"b.txt"})
+
+    def test_custom_key(self):
+        self.store.add("text", metadata={"path": "/some/path.md"})
+        self.assertEqual(self.store.list_sources(key="path"), {"/some/path.md"})
+
+    def test_custom_key_missing_from_all_docs_returns_empty_set(self):
+        self.store.add("text", metadata={"filename": "a.txt"})
+        self.assertEqual(self.store.list_sources(key="nonexistent"), set())
+
+    def test_returns_a_set_type(self):
+        self.store.add("text", metadata={"filename": "a.txt"})
+        self.assertIsInstance(self.store.list_sources(), set)
+
+    def test_key_not_str_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.list_sources(key=123)  # type: ignore
+
+    def test_key_empty_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.store.list_sources(key="")
+
+    def test_key_whitespace_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.store.list_sources(key="   ")
+
+    def test_delete_removes_source_when_last_doc_gone(self):
+        doc_id = self.store.add("only chunk", metadata={"filename": "a.txt"})
+        self.assertIn("a.txt", self.store.list_sources())
+        self.store.delete(doc_id)
+        self.assertNotIn("a.txt", self.store.list_sources())
+
+    def test_partial_delete_keeps_source_if_other_docs_remain(self):
+        id1 = self.store.add("chunk 1", metadata={"filename": "a.txt"})
+        self.store.add("chunk 2", metadata={"filename": "a.txt"})
+        self.store.delete(id1)
+        self.assertIn("a.txt", self.store.list_sources())
+
+    def test_mixed_files_returns_correct_set(self):
+        self.store.add("a1", metadata={"filename": "a.txt"})
+        self.store.add("a2", metadata={"filename": "a.txt"})
+        self.store.add("b1", metadata={"filename": "b.md"})
+        result = self.store.list_sources()
+        self.assertEqual(result, {"a.txt", "b.md"})
+
+
 if __name__ == "__main__":
     unittest.main()

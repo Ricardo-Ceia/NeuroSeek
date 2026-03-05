@@ -248,6 +248,29 @@ class NamespaceManager:
     # Aggregate info
     # ------------------------------------------------------------------
 
+    def list_sources(self, namespace: str, key: str = "filename") -> set:
+        """Return distinct values for metadata *key* in *namespace*.
+
+        Parameters
+        ----------
+        namespace:
+            The namespace to inspect. Must already exist.
+        key:
+            The metadata key to aggregate. Defaults to ``"filename"``.
+
+        Returns
+        -------
+        set
+            Unique values found. Documents without *key* are ignored.
+
+        Raises
+        ------
+        KeyError
+            If *namespace* does not exist.
+        """
+        engine = self._get_namespace(namespace)
+        return engine.list_sources(key)
+
     def namespace_len(self, name: str) -> int:
         """Return the number of documents in *name*."""
         return len(self._get_namespace(name))

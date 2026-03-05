@@ -538,5 +538,50 @@ class TestSearchEngineFilter(unittest.TestCase):
         self.assertEqual(scores, sorted(scores, reverse=True))
 
 
+class TestSearchEngineListSources(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._engine = SearchEngine._from_embedder(embedder)
+
+    def test_empty_engine_returns_empty_set(self):
+        self.assertEqual(self._engine.list_sources(), set())
+
+    def test_single_doc_with_filename(self):
+        self._engine.add("hello world", metadata={"filename": "a.txt"})
+        self.assertEqual(self._engine.list_sources(), {"a.txt"})
+
+    def test_multiple_chunks_same_file_returns_one_entry(self):
+        self._engine.add("chunk 1", metadata={"filename": "a.txt"})
+        self._engine.add("chunk 2", metadata={"filename": "a.txt"})
+        self.assertEqual(self._engine.list_sources(), {"a.txt"})
+
+    def test_multiple_files_returns_all(self):
+        self._engine.add("text a", metadata={"filename": "a.txt"})
+        self._engine.add("text b", metadata={"filename": "b.md"})
+        self.assertEqual(self._engine.list_sources(), {"a.txt", "b.md"})
+
+    def test_doc_without_filename_ignored(self):
+        self._engine.add("no filename", metadata={"other": "x"})
+        self._engine.add("with filename", metadata={"filename": "a.txt"})
+        self.assertEqual(self._engine.list_sources(), {"a.txt"})
+
+    def test_custom_key(self):
+        self._engine.add("text", metadata={"path": "/some/file.md"})
+        self.assertEqual(self._engine.list_sources(key="path"), {"/some/file.md"})
+
+    def test_returns_set_type(self):
+        self._engine.add("text", metadata={"filename": "a.txt"})
+        self.assertIsInstance(self._engine.list_sources(), set)
+
+    def test_invalid_key_type_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self._engine.list_sources(key=99)  # type: ignore
+
+    def test_empty_key_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._engine.list_sources(key="")
+
+
 if __name__ == "__main__":
     unittest.main()
