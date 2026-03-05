@@ -1,0 +1,11 @@
+department,q1_budget,q1_actual,q2_budget,q2_actual,notes
+Engineering,450000,423000,480000,501000,Q2 overage due to contractor hires for product launch
+Marketing,200000,198000,220000,215000,Under budget both quarters
+Sales,300000,310000,320000,335000,Exceeded targets driven by enterprise deals
+HR,80000,79000,85000,83000,Benefits renewal saved costs in Q1
+Finance,60000,58000,65000,67000,Q2 overage from external audit fees
+Product,150000,145000,160000,158000,Slight underspend on design tools
+Infrastructure,500000,512000,520000,498000,Q1 spike from data center migration
+Legal,90000,88000,95000,102000,Q2 increase due to acquisition due diligence
+Customer Success,120000,118000,130000,127000,Headcount freeze kept costs low
+Research,250000,241000,270000,268000,GPU cluster expansion slightly under budget
