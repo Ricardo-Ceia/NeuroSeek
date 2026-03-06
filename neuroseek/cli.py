@@ -276,6 +276,36 @@ def cmd_delete(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_list_sources(args: argparse.Namespace) -> int:
+    """Handle ``neuroseek list-sources [--namespace NS]``."""
+    index_path = _resolve_index_path(args.index)
+    namespace = args.namespace
+
+    if not index_path.exists():
+        print("No index found. Run `neuroseek index <path>` first.")
+        return 0
+
+    manager = _load_manager(index_path)
+
+    if namespace not in manager.list_namespaces():
+        print(
+            f"Namespace {namespace!r} not found. "
+            f"Available: {manager.list_namespaces()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    sources = sorted(manager.list_sources(namespace))
+
+    if not sources:
+        print(f"No sources found in namespace {namespace!r}.")
+        return 0
+
+    for source in sources:
+        print(source)
+    return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     """Handle ``neuroseek list``."""
     index_path = _resolve_index_path(args.index)
@@ -420,6 +450,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Namespace to delete from (default: {DEFAULT_NAMESPACE!r}).",
     )
     p_delete.set_defaults(func=cmd_delete)
+
+    # -- list-sources --
+    p_list_sources = subparsers.add_parser(
+        "list-sources",
+        help="List all indexed source filenames in a namespace.",
+    )
+    p_list_sources.add_argument(
+        "--namespace",
+        metavar="NS",
+        default=DEFAULT_NAMESPACE,
+        help=f"Namespace to inspect (default: {DEFAULT_NAMESPACE!r}).",
+    )
+    p_list_sources.set_defaults(func=cmd_list_sources)
 
     return parser
 

@@ -728,3 +728,90 @@ class TestCmdDeleteByQuery:
         assert args.dry_run is True
 
 
+# ---------------------------------------------------------------------------
+# cmd_list_sources
+# ---------------------------------------------------------------------------
+
+
+class TestCmdListSources:
+    def test_list_sources_no_index_prints_message(self, tmp, capsys):
+        missing_idx = tmp / "no_index.pkl"
+        code, out, _ = run(["list-sources"], capsys, missing_idx)
+        assert code == 0
+        assert "No index found" in out
+
+    def test_list_sources_empty_namespace_prints_message(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "hello world test content here")
+        run(["index", str(f)], capsys, idx)
+        # Query a namespace with no sources (shouldn't happen normally, but test empty path)
+        manager = _load_manager(idx)
+        manager.create_namespace("empty_ns")
+        _save_manager(manager, idx)
+        _, out, _ = run(["list-sources", "--namespace", "empty_ns"], capsys, idx)
+        assert "No sources" in out or "empty" in out.lower()
+
+    def test_list_sources_shows_indexed_filename(self, tmp, idx, capsys):
+        f = write_file(tmp, "report.txt", "quarterly earnings report content here")
+        run(["index", str(f)], capsys, idx)
+        _, out, _ = run(["list-sources"], capsys, idx)
+        assert "report.txt" in out
+
+    def test_list_sources_shows_all_files(self, tmp, idx, capsys):
+        write_file(tmp, "alpha.txt", "alpha content")
+        write_file(tmp, "beta.txt", "beta content")
+        run(["index", str(tmp)], capsys, idx)
+        _, out, _ = run(["list-sources"], capsys, idx)
+        assert "alpha.txt" in out
+        assert "beta.txt" in out
+
+    def test_list_sources_output_is_sorted(self, tmp, idx, capsys):
+        write_file(tmp, "zebra.txt", "zebra content here")
+        write_file(tmp, "apple.txt", "apple content here")
+        run(["index", str(tmp)], capsys, idx)
+        _, out, _ = run(["list-sources"], capsys, idx)
+        lines = [l for l in out.splitlines() if l.strip()]
+        assert lines == sorted(lines)
+
+    def test_list_sources_custom_namespace(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "document in custom namespace content")
+        run(["index", str(f), "--namespace", "myns"], capsys, idx)
+        _, out, _ = run(["list-sources", "--namespace", "myns"], capsys, idx)
+        assert "doc.txt" in out
+
+    def test_list_sources_unknown_namespace_exit_one(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "content")
+        run(["index", str(f)], capsys, idx)
+        code, _, err = run(["list-sources", "--namespace", "ghost"], capsys, idx)
+        assert code == 1
+        assert "ghost" in err or "Namespace" in err
+
+    def test_list_sources_exit_zero(self, tmp, idx, capsys):
+        f = write_file(tmp, "doc.txt", "content")
+        run(["index", str(f)], capsys, idx)
+        code, _, _ = run(["list-sources"], capsys, idx)
+        assert code == 0
+
+    def test_list_sources_namespace_isolated(self, tmp, idx, capsys):
+        f1 = write_file(tmp, "a.txt", "content alpha here")
+        f2 = write_file(tmp, "b.txt", "content beta here")
+        run(["index", str(f1), "--namespace", "ns1"], capsys, idx)
+        run(["index", str(f2), "--namespace", "ns2"], capsys, idx)
+        _, out1, _ = run(["list-sources", "--namespace", "ns1"], capsys, idx)
+        _, out2, _ = run(["list-sources", "--namespace", "ns2"], capsys, idx)
+        assert "a.txt" in out1
+        assert "b.txt" not in out1
+        assert "b.txt" in out2
+        assert "a.txt" not in out2
+
+    def test_list_sources_subcommand_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "list-sources"])
+        assert args.command == "list-sources"
+        assert args.namespace == DEFAULT_NAMESPACE
+
+    def test_list_sources_custom_namespace_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "list-sources", "--namespace", "myns"]
+        )
+        assert args.namespace == "myns"
