@@ -5,6 +5,11 @@ and restore them without re-embedding any documents.
 Format: a pickle file containing a list of per-namespace payloads, each
 identical in structure to what save_search_engine / load_search_engine use,
 plus the top-level NamespaceManager constructor params.
+
+The payload always includes a ``"persistence_version"`` key whose value is
+:data:`PERSISTENCE_VERSION`.  :func:`load_namespace_manager` raises a clear
+:exc:`ValueError` if the stored version is absent or does not match, so users
+see a useful error instead of a cryptic ``KeyError`` or attribute crash.
 """
 
 from __future__ import annotations
@@ -15,6 +20,10 @@ from pathlib import Path
 from neuroseek.namespace_manager import NamespaceManager
 from neuroseek.search_engine import SearchEngine
 from neuroseek.embedder import Embedder
+
+#: Current binary persistence format version.  Bump this whenever the pickle
+#: schema changes in a backwards-incompatible way.
+PERSISTENCE_VERSION = "1"
 
 
 def save_namespace_manager(manager: NamespaceManager, path: str | Path) -> None:
@@ -58,6 +67,7 @@ def save_namespace_manager(manager: NamespaceManager, path: str | Path) -> None:
         namespaces_payload[name] = engine_payload
 
     payload = {
+        "persistence_version": PERSISTENCE_VERSION,
         "model_name": manager.model_name,
         "M": manager.M,
         "efConstruction": manager.efConstruction,
@@ -88,6 +98,20 @@ def load_namespace_manager(path: str | Path) -> NamespaceManager:
     """
     with open(path, "rb") as fh:
         payload = pickle.load(fh)
+
+    stored_version = payload.get("persistence_version")
+    if stored_version != PERSISTENCE_VERSION:
+        if stored_version is None:
+            raise ValueError(
+                f"The index file at {str(path)!r} was created by an older version of "
+                f"NeuroSeek that does not include a persistence version header. "
+                f"Please re-index your data with the current version."
+            )
+        raise ValueError(
+            f"The index file at {str(path)!r} was created with persistence_version "
+            f"{stored_version!r}, but this version of NeuroSeek requires "
+            f"{PERSISTENCE_VERSION!r}. Please re-index your data."
+        )
 
     manager = NamespaceManager(
         model_name=payload["model_name"],

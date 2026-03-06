@@ -6,6 +6,7 @@ The model is loaded once per session via the conftest fixture.
 """
 
 import os
+import pickle
 import tempfile
 import unittest
 import pytest
@@ -15,6 +16,7 @@ from neuroseek.namespace_manager import NamespaceManager
 from neuroseek.persistence.namespace_manager_persistence import (
     load_namespace_manager,
     save_namespace_manager,
+    PERSISTENCE_VERSION,
 )
 
 
@@ -183,6 +185,149 @@ class TestLoadErrors(unittest.TestCase):
     def test_load_missing_file_raises_file_not_found(self):
         with self.assertRaises(FileNotFoundError):
             load_namespace_manager("/tmp/neuroseek_ns_does_not_exist.nsmgr")
+
+
+# ---------------------------------------------------------------------------
+# Persistence versioning
+# ---------------------------------------------------------------------------
+
+
+class TestPersistenceVersioning(unittest.TestCase):
+
+    def setUp(self):
+        self.path = _tmp_path()
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self.embedder = embedder
+
+    # --- Version is written on save ---
+
+    def test_saved_file_contains_persistence_version(self):
+        mgr = NamespaceManager._from_embedder(self.embedder)
+        save_namespace_manager(mgr, self.path)
+        with open(self.path, "rb") as fh:
+            payload = pickle.load(fh)
+        assert "persistence_version" in payload
+
+    def test_saved_version_matches_constant(self):
+        mgr = NamespaceManager._from_embedder(self.embedder)
+        save_namespace_manager(mgr, self.path)
+        with open(self.path, "rb") as fh:
+            payload = pickle.load(fh)
+        assert payload["persistence_version"] == PERSISTENCE_VERSION
+
+    # --- Correct version loads fine ---
+
+    def test_correct_version_loads_successfully(self):
+        mgr = NamespaceManager._from_embedder(self.embedder)
+        mgr.add("hello world", "ns")
+        save_namespace_manager(mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        assert "ns" in loaded.list_namespaces()
+
+    # --- Missing version raises ValueError ---
+
+    def test_missing_version_raises_value_error(self):
+        # Write a pickle payload without the version key (old-format simulation)
+        payload = {
+            "model_name": "multi-qa-MiniLM-L6-cos-v1",
+            "M": 16,
+            "efConstruction": 200,
+            "namespaces": {},
+        }
+        with open(self.path, "wb") as fh:
+            pickle.dump(payload, fh)
+        with self.assertRaises(ValueError):
+            load_namespace_manager(self.path)
+
+    def test_missing_version_error_message_is_informative(self):
+        payload = {
+            "model_name": "multi-qa-MiniLM-L6-cos-v1",
+            "M": 16,
+            "efConstruction": 200,
+            "namespaces": {},
+        }
+        with open(self.path, "wb") as fh:
+            pickle.dump(payload, fh)
+        try:
+            load_namespace_manager(self.path)
+        except ValueError as exc:
+            msg = str(exc).lower()
+            # Should mention the problem and what to do
+            assert "version" in msg or "older" in msg or "re-index" in msg
+        else:
+            self.fail("Expected ValueError")
+
+    # --- Wrong version raises ValueError ---
+
+    def test_wrong_version_raises_value_error(self):
+        payload = {
+            "persistence_version": "99",
+            "model_name": "multi-qa-MiniLM-L6-cos-v1",
+            "M": 16,
+            "efConstruction": 200,
+            "namespaces": {},
+        }
+        with open(self.path, "wb") as fh:
+            pickle.dump(payload, fh)
+        with self.assertRaises(ValueError):
+            load_namespace_manager(self.path)
+
+    def test_wrong_version_error_message_contains_stored_version(self):
+        payload = {
+            "persistence_version": "42",
+            "model_name": "multi-qa-MiniLM-L6-cos-v1",
+            "M": 16,
+            "efConstruction": 200,
+            "namespaces": {},
+        }
+        with open(self.path, "wb") as fh:
+            pickle.dump(payload, fh)
+        try:
+            load_namespace_manager(self.path)
+        except ValueError as exc:
+            assert "42" in str(exc)
+        else:
+            self.fail("Expected ValueError")
+
+    def test_wrong_version_error_message_contains_expected_version(self):
+        payload = {
+            "persistence_version": "99",
+            "model_name": "multi-qa-MiniLM-L6-cos-v1",
+            "M": 16,
+            "efConstruction": 200,
+            "namespaces": {},
+        }
+        with open(self.path, "wb") as fh:
+            pickle.dump(payload, fh)
+        try:
+            load_namespace_manager(self.path)
+        except ValueError as exc:
+            assert PERSISTENCE_VERSION in str(exc)
+        else:
+            self.fail("Expected ValueError")
+
+    def test_wrong_version_error_mentions_file_path(self):
+        payload = {
+            "persistence_version": "0",
+            "model_name": "multi-qa-MiniLM-L6-cos-v1",
+            "M": 16,
+            "efConstruction": 200,
+            "namespaces": {},
+        }
+        with open(self.path, "wb") as fh:
+            pickle.dump(payload, fh)
+        try:
+            load_namespace_manager(self.path)
+        except ValueError as exc:
+            assert self.path in str(exc)
+        else:
+            self.fail("Expected ValueError")
 
 
 if __name__ == "__main__":
