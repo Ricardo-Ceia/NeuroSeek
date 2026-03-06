@@ -194,6 +194,39 @@ class SearchEngine:
 
         return assigned_ids
 
+    def delete_by_source(self, filename: str) -> int:
+        """Remove all documents whose ``filename`` metadata value equals *filename*.
+
+        Parameters
+        ----------
+        filename:
+            The filename to match against the ``"filename"`` metadata field.
+
+        Returns
+        -------
+        int
+            The number of documents (chunks) that were deleted.
+
+        Raises
+        ------
+        TypeError
+            If *filename* is not a str.
+        ValueError
+            If *filename* is empty or whitespace-only.
+        """
+        if not isinstance(filename, str):
+            raise TypeError(
+                f"filename must be a str, got {type(filename).__name__}"
+            )
+        if not filename.strip():
+            raise ValueError("filename must not be empty or whitespace-only")
+
+        ids_to_delete = self._store.ids_for_metadata("filename", filename)
+        for doc_id in ids_to_delete:
+            self._index.delete_vector(doc_id)
+            self._store.delete(doc_id)
+        return len(ids_to_delete)
+
     def delete(self, id: int) -> None:  # noqa: A002
         """Remove the document with *id* from both the index and the store."""
         self._index.delete_vector(id)

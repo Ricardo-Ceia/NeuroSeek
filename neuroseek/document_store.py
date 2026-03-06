@@ -228,6 +228,75 @@ class DocumentStore:
             raise KeyError(id)
         del self._store[id]
 
+    def ids_for_metadata(self, key: str, value: object) -> list:
+        """Return a list of all document IDs where ``metadata[key] == value``.
+
+        Parameters
+        ----------
+        key:
+            Metadata key to match on.
+        value:
+            Value to compare against.
+
+        Returns
+        -------
+        list[int]
+            IDs of matching documents (may be empty).
+
+        Raises
+        ------
+        TypeError
+            If *key* is not a str.
+        ValueError
+            If *key* is empty or whitespace-only.
+        """
+        if not isinstance(key, str):
+            raise TypeError(f"key must be a str, got {type(key).__name__}")
+        if not key.strip():
+            raise ValueError("key must not be empty or whitespace-only")
+        return [
+            doc_id
+            for doc_id, entry in self._store.items()
+            if entry["metadata"].get(key) == value
+        ]
+
+    def delete_by_metadata(self, key: str, value: object) -> int:
+        """Remove all documents whose metadata contains ``key == value``.
+
+        Parameters
+        ----------
+        key:
+            Metadata key to match on.
+        value:
+            Value to match. Documents where ``metadata[key] == value`` are
+            removed; others are left untouched.
+
+        Returns
+        -------
+        int
+            The number of documents that were deleted.
+
+        Raises
+        ------
+        TypeError
+            If *key* is not a str.
+        ValueError
+            If *key* is empty or whitespace-only.
+        """
+        if not isinstance(key, str):
+            raise TypeError(f"key must be a str, got {type(key).__name__}")
+        if not key.strip():
+            raise ValueError("key must not be empty or whitespace-only")
+
+        ids_to_delete = [
+            doc_id
+            for doc_id, entry in self._store.items()
+            if entry["metadata"].get(key) == value
+        ]
+        for doc_id in ids_to_delete:
+            del self._store[doc_id]
+        return len(ids_to_delete)
+
     def matches_filter(self, id: int, filter: Optional[dict]) -> bool:  # noqa: A002
         """Return True if the document's metadata satisfies *filter*.
 

@@ -198,6 +198,32 @@ class NamespaceManager:
         engine = self._ensure_namespace(namespace)
         return engine.add_batch(texts, ids=ids, metadata_list=metadata_list)
 
+    def delete_source(self, filename: str, namespace: str) -> int:
+        """Remove all chunks whose ``filename`` metadata equals *filename* from *namespace*.
+
+        Parameters
+        ----------
+        filename:
+            The filename to remove (must match the ``"filename"`` metadata field
+            exactly as stored during indexing).
+        namespace:
+            The namespace to remove from. Must already exist.
+
+        Returns
+        -------
+        int
+            The number of chunks (documents) that were deleted.
+
+        Raises
+        ------
+        KeyError
+            If *namespace* does not exist.
+        TypeError / ValueError
+            On invalid *filename*.
+        """
+        engine = self._get_namespace(namespace)
+        return engine.delete_by_source(filename)
+
     def delete(self, id: int, namespace: str) -> None:  # noqa: A002
         """Remove document *id* from *namespace*.
 

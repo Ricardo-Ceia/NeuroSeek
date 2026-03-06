@@ -583,5 +583,91 @@ class TestSearchEngineListSources(unittest.TestCase):
             self._engine.list_sources(key="")
 
 
+# ---------------------------------------------------------------------------
+# delete_by_source()
+# ---------------------------------------------------------------------------
+
+class TestSearchEngineDeleteBySource(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._engine = SearchEngine._from_embedder(embedder)
+
+    def test_delete_by_source_returns_correct_count(self):
+        self._engine.add("chunk one", id=0, metadata={"filename": "a.txt"})
+        self._engine.add("chunk two", id=1, metadata={"filename": "a.txt"})
+        count = self._engine.delete_by_source("a.txt")
+        self.assertEqual(count, 2)
+
+    def test_delete_by_source_reduces_length(self):
+        self._engine.add("chunk one", id=0, metadata={"filename": "a.txt"})
+        self._engine.add("chunk two", id=1, metadata={"filename": "a.txt"})
+        self._engine.delete_by_source("a.txt")
+        self.assertEqual(len(self._engine), 0)
+
+    def test_delete_by_source_removed_from_search_results(self):
+        self._engine.add("machine learning basics", id=0, metadata={"filename": "ml.txt"})
+        self._engine.add("deep neural networks", id=1, metadata={"filename": "nn.txt"})
+        self._engine.delete_by_source("ml.txt")
+        results = self._engine.search("machine learning", top_k=5)
+        ids = [r["id"] for r in results]
+        self.assertNotIn(0, ids)
+
+    def test_delete_by_source_does_not_affect_other_files(self):
+        self._engine.add("content from file a", id=0, metadata={"filename": "a.txt"})
+        self._engine.add("content from file b", id=1, metadata={"filename": "b.txt"})
+        self._engine.delete_by_source("a.txt")
+        self.assertEqual(len(self._engine), 1)
+        results = self._engine.search("content from file b", top_k=1)
+        self.assertEqual(results[0]["id"], 1)
+
+    def test_delete_by_source_unknown_filename_returns_zero(self):
+        self._engine.add("some content", id=0, metadata={"filename": "real.txt"})
+        count = self._engine.delete_by_source("ghost.txt")
+        self.assertEqual(count, 0)
+
+    def test_delete_by_source_unknown_filename_does_not_change_length(self):
+        self._engine.add("some content", id=0, metadata={"filename": "real.txt"})
+        self._engine.delete_by_source("ghost.txt")
+        self.assertEqual(len(self._engine), 1)
+
+    def test_delete_by_source_multiple_chunks_all_removed(self):
+        for i in range(5):
+            self._engine.add(f"chunk {i}", id=i, metadata={"filename": "big.txt"})
+        self._engine.delete_by_source("big.txt")
+        self.assertEqual(len(self._engine), 0)
+
+    def test_delete_by_source_only_affects_matching_chunks(self):
+        self._engine.add("alpha", id=0, metadata={"filename": "a.txt"})
+        self._engine.add("beta", id=1, metadata={"filename": "b.txt"})
+        self._engine.add("gamma", id=2, metadata={"filename": "a.txt"})
+        self._engine.delete_by_source("a.txt")
+        self.assertEqual(len(self._engine), 1)
+
+    def test_delete_by_source_non_str_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self._engine.delete_by_source(123)  # type: ignore
+
+    def test_delete_by_source_empty_str_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._engine.delete_by_source("")
+
+    def test_delete_by_source_whitespace_str_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._engine.delete_by_source("   ")
+
+    def test_delete_by_source_idempotent(self):
+        self._engine.add("content", id=0, metadata={"filename": "a.txt"})
+        self._engine.delete_by_source("a.txt")
+        # Second call on already-deleted file should return 0, not raise
+        count = self._engine.delete_by_source("a.txt")
+        self.assertEqual(count, 0)
+
+    def test_delete_by_source_docs_without_filename_not_affected(self):
+        self._engine.add("no filename here", id=0, metadata={"other": "x"})
+        self._engine.delete_by_source("a.txt")
+        self.assertEqual(len(self._engine), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

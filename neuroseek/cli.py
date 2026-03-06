@@ -203,6 +203,40 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_delete(args: argparse.Namespace) -> int:
+    """Handle ``neuroseek delete <filename>``."""
+    filename = args.filename
+    index_path = _resolve_index_path(args.index)
+    namespace = args.namespace
+
+    if not index_path.exists():
+        print("No index found. Run `neuroseek index <path>` first.", file=sys.stderr)
+        return 1
+
+    manager = _load_manager(index_path)
+
+    if namespace not in manager.list_namespaces():
+        print(
+            f"Namespace {namespace!r} not found. "
+            f"Available: {manager.list_namespaces()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    deleted = manager.delete_source(filename, namespace=namespace)
+
+    if deleted == 0:
+        print(
+            f"No chunks found for {filename!r} in namespace {namespace!r}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    _save_manager(manager, index_path)
+    print(f"Deleted {deleted} chunk(s) for {filename!r} from namespace {namespace!r}.")
+    return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     """Handle ``neuroseek list``."""
     index_path = _resolve_index_path(args.index)
@@ -308,6 +342,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List all namespaces and document counts.",
     )
     p_list.set_defaults(func=cmd_list)
+
+    # -- delete --
+    p_delete = subparsers.add_parser(
+        "delete",
+        help="Remove all chunks for a given filename from the index.",
+    )
+    p_delete.add_argument(
+        "filename",
+        metavar="FILENAME",
+        help="Filename to delete (as stored in metadata, e.g. 'report.txt').",
+    )
+    p_delete.add_argument(
+        "--namespace",
+        metavar="NS",
+        default=DEFAULT_NAMESPACE,
+        help=f"Namespace to delete from (default: {DEFAULT_NAMESPACE!r}).",
+    )
+    p_delete.set_defaults(func=cmd_delete)
 
     return parser
 

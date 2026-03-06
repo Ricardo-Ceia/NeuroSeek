@@ -505,6 +505,108 @@ class TestDocumentStoreMetadata(unittest.TestCase):
         self.assertEqual(len(self.store), 0)
 
 
+class TestDocumentStoreIdsForMetadata(unittest.TestCase):
+
+    def setUp(self):
+        self.store = DocumentStore()
+
+    def test_empty_store_returns_empty_list(self):
+        self.assertEqual(self.store.ids_for_metadata("filename", "a.txt"), [])
+
+    def test_single_match_returns_that_id(self):
+        doc_id = self.store.add("text", metadata={"filename": "a.txt"})
+        self.assertEqual(self.store.ids_for_metadata("filename", "a.txt"), [doc_id])
+
+    def test_multiple_matches_returns_all_ids(self):
+        id0 = self.store.add("chunk 1", metadata={"filename": "a.txt"})
+        id1 = self.store.add("chunk 2", metadata={"filename": "a.txt"})
+        result = self.store.ids_for_metadata("filename", "a.txt")
+        self.assertCountEqual(result, [id0, id1])
+
+    def test_no_match_returns_empty_list(self):
+        self.store.add("text", metadata={"filename": "b.txt"})
+        self.assertEqual(self.store.ids_for_metadata("filename", "a.txt"), [])
+
+    def test_docs_without_key_are_excluded(self):
+        self.store.add("no filename", metadata={"other": "x"})
+        self.assertEqual(self.store.ids_for_metadata("filename", "x"), [])
+
+    def test_docs_with_different_value_are_excluded(self):
+        self.store.add("a", metadata={"filename": "a.txt"})
+        id_b = self.store.add("b", metadata={"filename": "b.txt"})
+        result = self.store.ids_for_metadata("filename", "b.txt")
+        self.assertEqual(result, [id_b])
+
+    def test_returns_list_type(self):
+        self.assertIsInstance(self.store.ids_for_metadata("filename", "x"), list)
+
+    def test_key_not_str_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.ids_for_metadata(99, "a.txt")  # type: ignore
+
+    def test_key_empty_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.store.ids_for_metadata("", "a.txt")
+
+    def test_key_whitespace_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.store.ids_for_metadata("   ", "a.txt")
+
+
+class TestDocumentStoreDeleteByMetadata(unittest.TestCase):
+
+    def setUp(self):
+        self.store = DocumentStore()
+
+    def test_deletes_matching_docs_and_returns_count(self):
+        self.store.add("chunk 1", metadata={"filename": "a.txt"})
+        self.store.add("chunk 2", metadata={"filename": "a.txt"})
+        count = self.store.delete_by_metadata("filename", "a.txt")
+        self.assertEqual(count, 2)
+
+    def test_deleted_docs_no_longer_in_store(self):
+        id0 = self.store.add("chunk 1", metadata={"filename": "a.txt"})
+        id1 = self.store.add("chunk 2", metadata={"filename": "a.txt"})
+        self.store.delete_by_metadata("filename", "a.txt")
+        self.assertNotIn(id0, self.store)
+        self.assertNotIn(id1, self.store)
+
+    def test_non_matching_docs_are_preserved(self):
+        self.store.add("a chunk", metadata={"filename": "a.txt"})
+        id_b = self.store.add("b chunk", metadata={"filename": "b.txt"})
+        self.store.delete_by_metadata("filename", "a.txt")
+        self.assertIn(id_b, self.store)
+
+    def test_no_match_returns_zero(self):
+        self.store.add("text", metadata={"filename": "b.txt"})
+        count = self.store.delete_by_metadata("filename", "a.txt")
+        self.assertEqual(count, 0)
+
+    def test_empty_store_returns_zero(self):
+        self.assertEqual(self.store.delete_by_metadata("filename", "a.txt"), 0)
+
+    def test_length_decreases_by_deleted_count(self):
+        self.store.add("c1", metadata={"filename": "a.txt"})
+        self.store.add("c2", metadata={"filename": "a.txt"})
+        self.store.add("c3", metadata={"filename": "b.txt"})
+        self.store.delete_by_metadata("filename", "a.txt")
+        self.assertEqual(len(self.store), 1)
+
+    def test_key_not_str_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self.store.delete_by_metadata(123, "val")  # type: ignore
+
+    def test_key_empty_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.store.delete_by_metadata("", "val")
+
+    def test_repeated_delete_returns_zero_second_time(self):
+        self.store.add("chunk", metadata={"filename": "a.txt"})
+        self.store.delete_by_metadata("filename", "a.txt")
+        count = self.store.delete_by_metadata("filename", "a.txt")
+        self.assertEqual(count, 0)
+
+
 class TestDocumentStoreListSources(unittest.TestCase):
 
     def setUp(self):

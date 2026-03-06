@@ -523,5 +523,90 @@ class TestNamespaceManagerListSources(unittest.TestCase):
         self.assertEqual(self._mgr.list_sources("ns"), {"f.txt"})
 
 
+# ---------------------------------------------------------------------------
+# delete_source()
+# ---------------------------------------------------------------------------
+
+class TestNamespaceManagerDeleteSource(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._mgr = NamespaceManager._from_embedder(embedder)
+
+    def test_delete_source_returns_correct_count(self):
+        self._mgr.add("chunk 1", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.add("chunk 2", namespace="ns", metadata={"filename": "a.txt"})
+        count = self._mgr.delete_source("a.txt", "ns")
+        self.assertEqual(count, 2)
+
+    def test_delete_source_reduces_namespace_len(self):
+        self._mgr.add("chunk 1", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.add("chunk 2", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.delete_source("a.txt", "ns")
+        self.assertEqual(self._mgr.namespace_len("ns"), 0)
+
+    def test_delete_source_reduces_total_len(self):
+        self._mgr.add("chunk 1", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.delete_source("a.txt", "ns")
+        self.assertEqual(len(self._mgr), 0)
+
+    def test_delete_source_removed_from_search(self):
+        self._mgr.add("machine learning models", namespace="ns", metadata={"filename": "ml.txt"})
+        self._mgr.add("deep neural networks", namespace="ns", metadata={"filename": "nn.txt"})
+        self._mgr.delete_source("ml.txt", "ns")
+        results = self._mgr.search("machine learning", "ns", top_k=5)
+        ids = [r["id"] for r in results]
+        self.assertNotIn(0, ids)
+
+    def test_delete_source_does_not_affect_other_files(self):
+        self._mgr.add("content from a", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.add("content from b", namespace="ns", metadata={"filename": "b.txt"})
+        self._mgr.delete_source("a.txt", "ns")
+        self.assertEqual(self._mgr.namespace_len("ns"), 1)
+
+    def test_delete_source_namespace_isolated(self):
+        self._mgr.add("content", namespace="ns1", metadata={"filename": "a.txt"})
+        self._mgr.add("content", namespace="ns2", metadata={"filename": "a.txt"})
+        self._mgr.delete_source("a.txt", "ns1")
+        self.assertEqual(self._mgr.namespace_len("ns1"), 0)
+        self.assertEqual(self._mgr.namespace_len("ns2"), 1)
+
+    def test_delete_source_unknown_filename_returns_zero(self):
+        self._mgr.create_namespace("ns")
+        count = self._mgr.delete_source("ghost.txt", "ns")
+        self.assertEqual(count, 0)
+
+    def test_delete_source_missing_namespace_raises_key_error(self):
+        with self.assertRaises(KeyError):
+            self._mgr.delete_source("a.txt", "does_not_exist")
+
+    def test_delete_source_non_str_filename_raises_type_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(TypeError):
+            self._mgr.delete_source(42, "ns")  # type: ignore
+
+    def test_delete_source_empty_filename_raises_value_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(ValueError):
+            self._mgr.delete_source("", "ns")
+
+    def test_delete_source_multiple_chunks_all_removed(self):
+        for i in range(4):
+            self._mgr.add(f"chunk {i}", namespace="ns", metadata={"filename": "big.txt"})
+        self._mgr.delete_source("big.txt", "ns")
+        self.assertEqual(self._mgr.namespace_len("ns"), 0)
+
+    def test_delete_source_idempotent(self):
+        self._mgr.add("content", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.delete_source("a.txt", "ns")
+        count = self._mgr.delete_source("a.txt", "ns")
+        self.assertEqual(count, 0)
+
+    def test_delete_source_updates_list_sources(self):
+        self._mgr.add("content", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.delete_source("a.txt", "ns")
+        self.assertNotIn("a.txt", self._mgr.list_sources("ns"))
+
+
 if __name__ == "__main__":
     unittest.main()

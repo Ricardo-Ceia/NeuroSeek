@@ -548,3 +548,95 @@ class TestMain:
         code_s, out, _ = run(["search", "neural networks"], capsys, idx)
         assert code_s == 0
         assert "neural" in out.lower() or "brain" in out.lower() or out.strip()
+
+
+# ---------------------------------------------------------------------------
+# cmd_delete
+# ---------------------------------------------------------------------------
+
+
+class TestCmdDelete:
+    @pytest.fixture(autouse=True)
+    def pre_index(self, tmp, idx, capsys):
+        """Index two files before each delete test."""
+        self.tmp = tmp
+        self.idx = idx
+        write_file(tmp, "alpha.txt", "alpha content about machine learning")
+        write_file(tmp, "beta.txt", "beta content about neural networks")
+        run(["index", str(tmp)], capsys, idx)
+
+    def test_delete_exit_zero(self, idx, capsys):
+        code, _, _ = run(["delete", "alpha.txt"], capsys, idx)
+        assert code == 0
+
+    def test_delete_prints_confirmation(self, idx, capsys):
+        _, out, _ = run(["delete", "alpha.txt"], capsys, idx)
+        assert "alpha.txt" in out
+        assert "Deleted" in out
+
+    def test_delete_reduces_chunk_count(self, idx, capsys):
+        count_before = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        run(["delete", "alpha.txt"], capsys, idx)
+        count_after = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        assert count_after < count_before
+
+    def test_delete_removes_only_target_file(self, idx, capsys):
+        run(["delete", "alpha.txt"], capsys, idx)
+        manager = _load_manager(idx)
+        sources = manager.list_sources(DEFAULT_NAMESPACE)
+        assert "alpha.txt" not in sources
+        assert "beta.txt" in sources
+
+    def test_delete_persists_to_disk(self, idx, capsys):
+        run(["delete", "alpha.txt"], capsys, idx)
+        manager = _load_manager(idx)
+        sources = manager.list_sources(DEFAULT_NAMESPACE)
+        assert "alpha.txt" not in sources
+
+    def test_delete_no_index_exit_one(self, tmp, capsys):
+        missing_idx = tmp / "no_index.pkl"
+        code, _, err = run(["delete", "alpha.txt"], capsys, missing_idx)
+        assert code == 1
+        assert "index" in err.lower()
+
+    def test_delete_unknown_namespace_exit_one(self, idx, capsys):
+        code, _, err = run(
+            ["delete", "alpha.txt", "--namespace", "nonexistent"], capsys, idx
+        )
+        assert code == 1
+        assert "nonexistent" in err or "Namespace" in err
+
+    def test_delete_unknown_filename_exit_one(self, idx, capsys):
+        code, _, err = run(["delete", "ghost.txt"], capsys, idx)
+        assert code == 1
+        assert "ghost.txt" in err
+
+    def test_delete_custom_namespace(self, tmp, idx, capsys):
+        f = write_file(tmp, "extra.txt", "custom namespace document content here")
+        run(["index", str(f), "--namespace", "myns"], capsys, idx)
+        code, out, _ = run(["delete", "extra.txt", "--namespace", "myns"], capsys, idx)
+        assert code == 0
+        assert "extra.txt" in out
+
+    def test_delete_default_namespace_leaves_other_namespace_intact(self, tmp, idx, capsys):
+        f = write_file(tmp, "shared.txt", "shared document content here for testing")
+        run(["index", str(f), "--namespace", "other"], capsys, idx)
+        run(["delete", "shared.txt"], capsys, idx)
+        manager = _load_manager(idx)
+        # "other" namespace should still have shared.txt
+        sources_other = manager.list_sources("other")
+        assert "shared.txt" in sources_other
+
+    def test_delete_subcommand_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "delete", "report.txt"])
+        assert args.command == "delete"
+        assert args.filename == "report.txt"
+        assert args.namespace == DEFAULT_NAMESPACE
+
+    def test_delete_custom_namespace_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "delete", "report.txt", "--namespace", "myns"]
+        )
+        assert args.namespace == "myns"
