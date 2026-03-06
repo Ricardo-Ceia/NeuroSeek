@@ -7,3 +7,6 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Benchmark data (downloaded at runtime)
+benchmarks/data/
