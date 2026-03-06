@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pkl
+
+# Build artefacts
+dist/
+build/
+*.egg-info/
