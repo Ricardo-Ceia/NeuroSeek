@@ -763,5 +763,103 @@ class TestSearchEngineDeleteByQuery(unittest.TestCase):
         self.assertEqual(scores, sorted(scores, reverse=True))
 
 
+# ---------------------------------------------------------------------------
+# update_source()
+# ---------------------------------------------------------------------------
+
+class TestSearchEngineUpdateSource(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._engine = SearchEngine._from_embedder(embedder)
+
+    def test_update_source_returns_new_chunk_count(self):
+        self._engine.add("old content", id=0, metadata={"filename": "a.txt"})
+        count = self._engine.update_source("a.txt", ["new chunk one", "new chunk two"])
+        self.assertEqual(count, 2)
+
+    def test_update_source_removes_old_chunks(self):
+        self._engine.add("old content about dogs", id=0, metadata={"filename": "a.txt"})
+        self._engine.update_source("a.txt", ["completely new content about cats"])
+        results = self._engine.search("dogs", top_k=5)
+        texts = [r["text"] for r in results]
+        self.assertNotIn("old content about dogs", texts)
+
+    def test_update_source_indexes_new_chunks(self):
+        self._engine.add("old content", id=0, metadata={"filename": "a.txt"})
+        self._engine.update_source("a.txt", ["brand new content about machine learning"])
+        results = self._engine.search("machine learning", top_k=1)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["text"], "brand new content about machine learning")
+
+    def test_update_source_preserves_filename_metadata(self):
+        self._engine.add("old content", id=0, metadata={"filename": "a.txt"})
+        self._engine.update_source("a.txt", ["new content here"])
+        results = self._engine.search("new content", top_k=1)
+        self.assertEqual(results[0]["metadata"].get("filename"), "a.txt")
+
+    def test_update_source_correct_length_after_update(self):
+        self._engine.add("old one", id=0, metadata={"filename": "a.txt"})
+        self._engine.add("old two", id=1, metadata={"filename": "a.txt"})
+        self._engine.update_source("a.txt", ["new chunk"])
+        self.assertEqual(len(self._engine), 1)
+
+    def test_update_source_does_not_affect_other_files(self):
+        self._engine.add("content b", id=0, metadata={"filename": "b.txt"})
+        self._engine.add("content a", id=1, metadata={"filename": "a.txt"})
+        self._engine.update_source("a.txt", ["updated a content"])
+        self.assertEqual(len(self._engine), 2)
+        results = self._engine.search("content b", top_k=1)
+        self.assertEqual(results[0]["metadata"]["filename"], "b.txt")
+
+    def test_update_source_with_metadata_list(self):
+        self._engine.add("old", id=0, metadata={"filename": "a.txt"})
+        self._engine.update_source(
+            "a.txt",
+            ["chunk one", "chunk two"],
+            metadata_list=[{"chunk_index": 0}, {"chunk_index": 1}],
+        )
+        results = self._engine.search("chunk", top_k=2)
+        chunk_indices = {r["metadata"].get("chunk_index") for r in results}
+        self.assertEqual(chunk_indices, {0, 1})
+
+    def test_update_source_metadata_list_injects_filename(self):
+        self._engine.add("old", id=0, metadata={"filename": "a.txt"})
+        self._engine.update_source(
+            "a.txt",
+            ["new chunk"],
+            metadata_list=[{"extra": "data"}],
+        )
+        results = self._engine.search("new chunk", top_k=1)
+        self.assertEqual(results[0]["metadata"]["filename"], "a.txt")
+        self.assertEqual(results[0]["metadata"]["extra"], "data")
+
+    def test_update_source_non_str_filename_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self._engine.update_source(42, ["chunk"])  # type: ignore
+
+    def test_update_source_empty_filename_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._engine.update_source("", ["chunk"])
+
+    def test_update_source_non_list_chunks_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self._engine.update_source("a.txt", "not a list")  # type: ignore
+
+    def test_update_source_empty_chunks_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._engine.update_source("a.txt", [])
+
+    def test_update_source_metadata_list_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            self._engine.update_source("a.txt", ["a", "b"], metadata_list=[{"k": "v"}])
+
+    def test_update_source_on_nonexistent_file_indexes_new_chunks(self):
+        # update_source on a file not yet in the index should just add it
+        count = self._engine.update_source("new.txt", ["fresh content here"])
+        self.assertEqual(count, 1)
+        self.assertEqual(len(self._engine), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

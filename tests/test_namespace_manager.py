@@ -684,5 +684,78 @@ class TestNamespaceManagerDeleteByQuery(unittest.TestCase):
         self.assertEqual(len(self._mgr), 0)
 
 
+# ---------------------------------------------------------------------------
+# update_source()
+# ---------------------------------------------------------------------------
+
+class TestNamespaceManagerUpdateSource(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._mgr = NamespaceManager._from_embedder(embedder)
+
+    def test_update_source_returns_new_chunk_count(self):
+        self._mgr.add("old content", namespace="ns", metadata={"filename": "a.txt"})
+        count = self._mgr.update_source("a.txt", "ns", ["new chunk one", "new chunk two"])
+        self.assertEqual(count, 2)
+
+    def test_update_source_removes_old_chunks(self):
+        self._mgr.add("old content about dogs", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.update_source("a.txt", "ns", ["new content about cats"])
+        results = self._mgr.search("dogs", "ns", top_k=5)
+        texts = [r["text"] for r in results]
+        self.assertNotIn("old content about dogs", texts)
+
+    def test_update_source_indexes_new_chunks(self):
+        self._mgr.add("old content", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.update_source("a.txt", "ns", ["brand new machine learning content"])
+        results = self._mgr.search("machine learning", "ns", top_k=1)
+        self.assertEqual(results[0]["text"], "brand new machine learning content")
+
+    def test_update_source_is_namespace_isolated(self):
+        self._mgr.add("old content about dogs", namespace="ns1", metadata={"filename": "a.txt"})
+        self._mgr.add("old content about dogs", namespace="ns2", metadata={"filename": "a.txt"})
+        self._mgr.update_source("a.txt", "ns1", ["new content about cats"])
+        # ns2 should be unchanged
+        results = self._mgr.search("dogs", "ns2", top_k=1)
+        self.assertEqual(results[0]["text"], "old content about dogs")
+
+    def test_update_source_correct_length_after_update(self):
+        self._mgr.add("old one", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.add("old two", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.update_source("a.txt", "ns", ["single new chunk"])
+        self.assertEqual(self._mgr.namespace_len("ns"), 1)
+
+    def test_update_source_missing_namespace_raises_key_error(self):
+        with self.assertRaises(KeyError):
+            self._mgr.update_source("a.txt", "ghost", ["chunk"])
+
+    def test_update_source_non_str_filename_raises_type_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(TypeError):
+            self._mgr.update_source(42, "ns", ["chunk"])  # type: ignore
+
+    def test_update_source_empty_filename_raises_value_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(ValueError):
+            self._mgr.update_source("", "ns", ["chunk"])
+
+    def test_update_source_empty_chunks_raises_value_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(ValueError):
+            self._mgr.update_source("a.txt", "ns", [])
+
+    def test_update_source_preserves_filename_in_metadata(self):
+        self._mgr.add("old", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.update_source("a.txt", "ns", ["updated content here"])
+        results = self._mgr.search("updated content", "ns", top_k=1)
+        self.assertEqual(results[0]["metadata"]["filename"], "a.txt")
+
+    def test_update_source_updates_list_sources(self):
+        self._mgr.add("old", namespace="ns", metadata={"filename": "a.txt"})
+        self._mgr.update_source("a.txt", "ns", ["new content"])
+        self.assertIn("a.txt", self._mgr.list_sources("ns"))
+
+
 if __name__ == "__main__":
     unittest.main()

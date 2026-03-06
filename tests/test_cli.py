@@ -815,3 +815,102 @@ class TestCmdListSources:
             ["--index", "/tmp/x.pkl", "list-sources", "--namespace", "myns"]
         )
         assert args.namespace == "myns"
+
+
+# ---------------------------------------------------------------------------
+# cmd_update
+# ---------------------------------------------------------------------------
+
+
+class TestCmdUpdate:
+    @pytest.fixture(autouse=True)
+    def pre_index(self, tmp, idx, capsys):
+        """Index a file before each update test."""
+        self.tmp = tmp
+        self.idx = idx
+        self.f = write_file(tmp, "doc.txt", "original content about dogs and puppies")
+        run(["index", str(self.f)], capsys, idx)
+
+    def test_update_exit_zero(self, idx, capsys):
+        self.f.write_text("updated content about cats and kittens", encoding="utf-8")
+        code, _, _ = run(["update", str(self.f)], capsys, idx)
+        assert code == 0
+
+    def test_update_prints_confirmation(self, idx, capsys):
+        self.f.write_text("updated content about cats and kittens", encoding="utf-8")
+        _, out, _ = run(["update", str(self.f)], capsys, idx)
+        assert "Updated" in out
+        assert "doc.txt" in out
+
+    def test_update_replaces_old_content(self, tmp, idx, capsys):
+        self.f.write_text("completely new text about space exploration", encoding="utf-8")
+        run(["update", str(self.f)], capsys, idx)
+        manager = _load_manager(idx)
+        results = manager.search("dogs and puppies", DEFAULT_NAMESPACE, top_k=5)
+        texts = [r["text"] for r in results]
+        assert not any("dogs" in t for t in texts)
+
+    def test_update_indexes_new_content(self, tmp, idx, capsys):
+        self.f.write_text("space exploration and astronomy", encoding="utf-8")
+        run(["update", str(self.f)], capsys, idx)
+        manager = _load_manager(idx)
+        results = manager.search("space exploration", DEFAULT_NAMESPACE, top_k=1)
+        assert len(results) == 1
+        assert "space" in results[0]["text"].lower()
+
+    def test_update_persists_to_disk(self, tmp, idx, capsys):
+        self.f.write_text("completely new persisted content", encoding="utf-8")
+        run(["update", str(self.f)], capsys, idx)
+        manager = _load_manager(idx)
+        sources = manager.list_sources(DEFAULT_NAMESPACE)
+        assert "doc.txt" in sources
+
+    def test_update_no_index_exit_one(self, tmp, capsys):
+        missing_idx = tmp / "no_index.pkl"
+        code, _, err = run(["update", str(self.f)], capsys, missing_idx)
+        assert code == 1
+        assert "index" in err.lower()
+
+    def test_update_nonexistent_file_exit_one(self, tmp, idx, capsys):
+        code, _, err = run(["update", str(tmp / "ghost.txt")], capsys, idx)
+        assert code == 1
+        assert "Error" in err
+
+    def test_update_unsupported_extension_exit_one(self, tmp, idx, capsys):
+        f = tmp / "doc.pdf"
+        f.write_bytes(b"%PDF")
+        code, _, err = run(["update", str(f)], capsys, idx)
+        assert code == 1
+        assert "Error" in err
+
+    def test_update_unknown_namespace_exit_one(self, idx, capsys):
+        self.f.write_text("new content here", encoding="utf-8")
+        code, _, err = run(
+            ["update", str(self.f), "--namespace", "ghost"], capsys, idx
+        )
+        assert code == 1
+        assert "ghost" in err or "Namespace" in err
+
+    def test_update_custom_namespace(self, tmp, idx, capsys):
+        f = write_file(tmp, "ns_doc.txt", "original content in custom namespace here")
+        run(["index", str(f), "--namespace", "myns"], capsys, idx)
+        f.write_text("updated content in custom namespace here", encoding="utf-8")
+        code, out, _ = run(["update", str(f), "--namespace", "myns"], capsys, idx)
+        assert code == 0
+        assert "ns_doc.txt" in out
+
+    def test_update_subcommand_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "update", "/some/file.txt"])
+        assert args.command == "update"
+        assert args.path == "/some/file.txt"
+        assert args.namespace == DEFAULT_NAMESPACE
+        assert args.chunk_size == DEFAULT_CHUNK_SIZE
+        assert args.chunk_overlap == DEFAULT_CHUNK_OVERLAP
+
+    def test_update_custom_chunk_size_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "update", "/f.txt", "--chunk-size", "64"]
+        )
+        assert args.chunk_size == 64

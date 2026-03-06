@@ -276,6 +276,64 @@ def cmd_delete(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update(args: argparse.Namespace) -> int:
+    """Handle ``neuroseek update <path>``."""
+    target = Path(args.path)
+    index_path = _resolve_index_path(args.index)
+    namespace = args.namespace
+    chunk_size = args.chunk_size
+    chunk_overlap = args.chunk_overlap
+
+    if not index_path.exists():
+        print("No index found. Run `neuroseek index <path>` first.", file=sys.stderr)
+        return 1
+
+    if not target.is_file():
+        print(f"Error: path is not a file: {str(target)!r}", file=sys.stderr)
+        return 1
+
+    manager = _load_manager(index_path)
+
+    if namespace not in manager.list_namespaces():
+        print(
+            f"Namespace {namespace!r} not found. "
+            f"Available: {manager.list_namespaces()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        text, file_meta = ingest_file(target)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    filename = file_meta.get("filename", target.name)
+
+    chunks_data = chunk_text(
+        text,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        metadata=file_meta,
+    )
+    chunk_texts = []
+    chunk_metas = []
+    for chunk in chunks_data:
+        chunk_texts.append(chunk.pop("text"))
+        chunk_metas.append(chunk)
+
+    if not chunk_texts:
+        print("No text content found to index.")
+        return 0
+
+    count = manager.update_source(filename, namespace, chunk_texts, metadata_list=chunk_metas)
+    _save_manager(manager, index_path)
+    print(
+        f"Updated {filename!r}: indexed {count} chunk(s) into namespace {namespace!r}."
+    )
+    return 0
+
+
 def cmd_list_sources(args: argparse.Namespace) -> int:
     """Handle ``neuroseek list-sources [--namespace NS]``."""
     index_path = _resolve_index_path(args.index)
@@ -450,6 +508,34 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Namespace to delete from (default: {DEFAULT_NAMESPACE!r}).",
     )
     p_delete.set_defaults(func=cmd_delete)
+
+    # -- update --
+    p_update = subparsers.add_parser(
+        "update",
+        help="Re-index a file, replacing its existing chunks.",
+    )
+    p_update.add_argument("path", metavar="PATH", help="File to re-index.")
+    p_update.add_argument(
+        "--namespace",
+        metavar="NS",
+        default=DEFAULT_NAMESPACE,
+        help=f"Namespace to update (default: {DEFAULT_NAMESPACE!r}).",
+    )
+    p_update.add_argument(
+        "--chunk-size",
+        metavar="N",
+        type=int,
+        default=DEFAULT_CHUNK_SIZE,
+        help=f"Words per chunk (default: {DEFAULT_CHUNK_SIZE}).",
+    )
+    p_update.add_argument(
+        "--chunk-overlap",
+        metavar="N",
+        type=int,
+        default=DEFAULT_CHUNK_OVERLAP,
+        help=f"Overlapping words between chunks (default: {DEFAULT_CHUNK_OVERLAP}).",
+    )
+    p_update.set_defaults(func=cmd_update)
 
     # -- list-sources --
     p_list_sources = subparsers.add_parser(

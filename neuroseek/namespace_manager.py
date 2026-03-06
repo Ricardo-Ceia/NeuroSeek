@@ -198,6 +198,42 @@ class NamespaceManager:
         engine = self._ensure_namespace(namespace)
         return engine.add_batch(texts, ids=ids, metadata_list=metadata_list)
 
+    def update_source(
+        self,
+        filename: str,
+        namespace: str,
+        chunks: list[str],
+        metadata_list: Optional[list[Optional[dict]]] = None,
+    ) -> int:
+        """Replace all chunks for *filename* in *namespace* with *chunks*.
+
+        Parameters
+        ----------
+        filename:
+            Filename key used in ``"filename"`` metadata.
+        namespace:
+            Target namespace. Must already exist.
+        chunks:
+            New list of text chunks to index.
+        metadata_list:
+            Optional per-chunk metadata dicts.  ``{"filename": filename}``
+            is merged automatically.
+
+        Returns
+        -------
+        int
+            Number of new chunks indexed.
+
+        Raises
+        ------
+        KeyError
+            If *namespace* does not exist.
+        TypeError / ValueError
+            On invalid arguments.
+        """
+        engine = self._get_namespace(namespace)
+        return engine.update_source(filename, chunks, metadata_list=metadata_list)
+
     def delete_by_query(
         self,
         query: str,

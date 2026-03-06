@@ -194,6 +194,71 @@ class SearchEngine:
 
         return assigned_ids
 
+    def update_source(
+        self,
+        filename: str,
+        chunks: list[str],
+        metadata_list: Optional[list[Optional[dict]]] = None,
+    ) -> int:
+        """Replace all chunks for *filename* with *chunks*.
+
+        Deletes all existing documents whose ``"filename"`` metadata equals
+        *filename*, then indexes the new *chunks* (each tagged with
+        ``{"filename": filename}`` merged into *metadata_list* entries).
+
+        Parameters
+        ----------
+        filename:
+            The filename key used in ``"filename"`` metadata.
+        chunks:
+            New list of text chunks to index.
+        metadata_list:
+            Optional per-chunk metadata dicts.  ``{"filename": filename}``
+            is merged into each entry automatically.  If omitted, only the
+            ``filename`` key is stored.
+
+        Returns
+        -------
+        int
+            Number of new chunks indexed.
+
+        Raises
+        ------
+        TypeError / ValueError
+            On invalid *filename* or *chunks*.
+        """
+        if not isinstance(filename, str):
+            raise TypeError(
+                f"filename must be a str, got {type(filename).__name__}"
+            )
+        if not filename.strip():
+            raise ValueError("filename must not be empty or whitespace-only")
+        if not isinstance(chunks, list):
+            raise TypeError(
+                f"chunks must be a list, got {type(chunks).__name__}"
+            )
+        if not chunks:
+            raise ValueError("chunks must not be empty")
+
+        # Build per-chunk metadata, injecting filename
+        if metadata_list is None:
+            full_metadata: list[Optional[dict]] = [{"filename": filename}] * len(chunks)
+        else:
+            if len(metadata_list) != len(chunks):
+                raise ValueError(
+                    f"metadata_list and chunks must have the same length "
+                    f"(got {len(metadata_list)} and {len(chunks)})"
+                )
+            full_metadata = []
+            for meta in metadata_list:
+                entry = dict(meta) if meta else {}
+                entry["filename"] = filename
+                full_metadata.append(entry)
+
+        self.delete_by_source(filename)
+        self.add_batch(chunks, metadata_list=full_metadata)
+        return len(chunks)
+
     def delete_by_query(
         self,
         query: str,
