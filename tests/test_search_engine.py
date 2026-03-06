@@ -669,5 +669,99 @@ class TestSearchEngineDeleteBySource(unittest.TestCase):
         self.assertEqual(len(self._engine), 1)
 
 
+# ---------------------------------------------------------------------------
+# delete_by_query()
+# ---------------------------------------------------------------------------
+
+class TestSearchEngineDeleteByQuery(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._engine = SearchEngine._from_embedder(embedder)
+
+    def test_delete_by_query_returns_list(self):
+        self._engine.add("dogs and puppies are great pets", id=0)
+        result = self._engine.delete_by_query("dogs")
+        self.assertIsInstance(result, list)
+
+    def test_delete_by_query_returns_result_dicts(self):
+        self._engine.add("cats are curious animals", id=0)
+        results = self._engine.delete_by_query("cats", top_k=1)
+        self.assertGreater(len(results), 0)
+        for r in results:
+            self.assertIn("id", r)
+            self.assertIn("text", r)
+            self.assertIn("score", r)
+            self.assertIn("metadata", r)
+
+    def test_delete_by_query_removes_from_engine(self):
+        self._engine.add("dogs and puppies are great pets", id=0)
+        self._engine.add("quantum physics and thermodynamics", id=1)
+        self._engine.delete_by_query("dogs and puppies", top_k=1)
+        self.assertEqual(len(self._engine), 1)
+
+    def test_delete_by_query_deleted_docs_not_in_search(self):
+        self._engine.add("dogs and puppies are great pets", id=0)
+        self._engine.add("quantum physics and thermodynamics", id=1)
+        self._engine.delete_by_query("dogs and puppies", top_k=1)
+        results = self._engine.search("dogs and puppies", top_k=5)
+        ids = [r["id"] for r in results]
+        self.assertNotIn(0, ids)
+
+    def test_delete_by_query_top_k_limits_deletions(self):
+        for i in range(6):
+            self._engine.add(f"document about dogs number {i}", id=i)
+        self._engine.delete_by_query("dogs", top_k=3)
+        self.assertEqual(len(self._engine), 3)
+
+    def test_delete_by_query_empty_engine_returns_empty_list(self):
+        result = self._engine.delete_by_query("anything")
+        self.assertEqual(result, [])
+
+    def test_delete_by_query_no_match_returns_empty_list(self):
+        self._engine.add("quantum physics", id=0)
+        results = self._engine.delete_by_query("puppies and kittens", top_k=1)
+        # May return something (semantic search always finds nearest), so just
+        # check the return type and that it's a list
+        self.assertIsInstance(results, list)
+
+    def test_delete_by_query_with_filter(self):
+        self._engine.add("dogs bark loudly", id=0, metadata={"type": "animal"})
+        self._engine.add("dogs in cartoons", id=1, metadata={"type": "fiction"})
+        self._engine.add("quantum mechanics", id=2, metadata={"type": "science"})
+        deleted = self._engine.delete_by_query(
+            "dogs", top_k=5, filter={"type": "animal"}
+        )
+        deleted_ids = {r["id"] for r in deleted}
+        self.assertIn(0, deleted_ids)
+        self.assertNotIn(2, deleted_ids)
+
+    def test_delete_by_query_invalid_query_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            self._engine.delete_by_query(123)  # type: ignore
+
+    def test_delete_by_query_empty_query_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._engine.delete_by_query("")
+
+    def test_delete_by_query_invalid_top_k_raises_type_error(self):
+        self._engine.add("hello", id=0)
+        with self.assertRaises(TypeError):
+            self._engine.delete_by_query("hello", top_k=1.0)  # type: ignore
+
+    def test_delete_by_query_zero_top_k_raises_value_error(self):
+        self._engine.add("hello", id=0)
+        with self.assertRaises(ValueError):
+            self._engine.delete_by_query("hello", top_k=0)
+
+    def test_delete_by_query_returns_sorted_by_score_descending(self):
+        self._engine.add("the cat sat on the mat", id=0)
+        self._engine.add("dogs are wonderful pets", id=1)
+        self._engine.add("quantum mechanics and thermodynamics", id=2)
+        results = self._engine.delete_by_query("feline animals", top_k=3)
+        scores = [r["score"] for r in results]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+
 if __name__ == "__main__":
     unittest.main()

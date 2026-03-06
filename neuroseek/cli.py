@@ -204,8 +204,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 
 def cmd_delete(args: argparse.Namespace) -> int:
-    """Handle ``neuroseek delete <filename>``."""
-    filename = args.filename
+    """Handle ``neuroseek delete <filename>`` or ``neuroseek delete --query "<q>"``."""
     index_path = _resolve_index_path(args.index)
     namespace = args.namespace
 
@@ -223,9 +222,49 @@ def cmd_delete(args: argparse.Namespace) -> int:
         )
         return 1
 
-    deleted = manager.delete_source(filename, namespace=namespace)
+    # ---- validate: must supply exactly one of filename or --query ----
+    if not args.query and not args.filename:
+        print(
+            "Error: provide either a FILENAME positional argument or --query.",
+            file=sys.stderr,
+        )
+        return 1
 
-    if deleted == 0:
+    # ---- delete by query ----
+    if args.query:
+        top_k = args.top_k
+        deleted = manager.delete_by_query(args.query, namespace=namespace, top_k=top_k)
+
+        if not deleted:
+            print(
+                f"No chunks matched query {args.query!r} in namespace {namespace!r}.",
+                file=sys.stderr,
+            )
+            return 1
+
+        print(f"Matched {len(deleted)} chunk(s) for query {args.query!r}:")
+        for i, result in enumerate(deleted, start=1):
+            meta = result["metadata"]
+            source = meta.get("filename", meta.get("path", "unknown"))
+            chunk_idx = meta.get("chunk_index", "?")
+            score = result["score"]
+            text = result["text"]
+            print(f"  [{i}] {source} (chunk {chunk_idx}) — score: {score:.4f}")
+            print(f"      {text[:120]}{'...' if len(text) > 120 else ''}")
+
+        if getattr(args, "dry_run", False):
+            print("Dry run — no changes written.")
+            return 0
+
+        _save_manager(manager, index_path)
+        print(f"Deleted {len(deleted)} chunk(s) from namespace {namespace!r}.")
+        return 0
+
+    # ---- delete by filename ----
+    filename = args.filename
+    deleted_count = manager.delete_source(filename, namespace=namespace)
+
+    if deleted_count == 0:
         print(
             f"No chunks found for {filename!r} in namespace {namespace!r}.",
             file=sys.stderr,
@@ -233,7 +272,7 @@ def cmd_delete(args: argparse.Namespace) -> int:
         return 1
 
     _save_manager(manager, index_path)
-    print(f"Deleted {deleted} chunk(s) for {filename!r} from namespace {namespace!r}.")
+    print(f"Deleted {deleted_count} chunk(s) for {filename!r} from namespace {namespace!r}.")
     return 0
 
 
@@ -346,12 +385,33 @@ def _build_parser() -> argparse.ArgumentParser:
     # -- delete --
     p_delete = subparsers.add_parser(
         "delete",
-        help="Remove all chunks for a given filename from the index.",
+        help="Remove chunks by filename or by semantic query.",
     )
     p_delete.add_argument(
         "filename",
         metavar="FILENAME",
+        nargs="?",
+        default=None,
         help="Filename to delete (as stored in metadata, e.g. 'report.txt').",
+    )
+    p_delete.add_argument(
+        "--query",
+        metavar="QUERY",
+        default=None,
+        help="Delete chunks that semantically match this query instead of a filename.",
+    )
+    p_delete.add_argument(
+        "--top-k",
+        metavar="N",
+        type=int,
+        default=DEFAULT_TOP_K,
+        help=f"Max chunks to delete when using --query (default: {DEFAULT_TOP_K}).",
+    )
+    p_delete.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print matching chunks but do not delete them (only with --query).",
     )
     p_delete.add_argument(
         "--namespace",

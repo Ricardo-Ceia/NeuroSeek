@@ -198,6 +198,42 @@ class NamespaceManager:
         engine = self._ensure_namespace(namespace)
         return engine.add_batch(texts, ids=ids, metadata_list=metadata_list)
 
+    def delete_by_query(
+        self,
+        query: str,
+        namespace: str,
+        top_k: int = 5,
+        filter: Optional[dict] = None,  # noqa: A002
+    ) -> list[dict]:
+        """Search *namespace* for *query* and delete all matching documents.
+
+        Parameters
+        ----------
+        query:
+            Non-empty query string.
+        namespace:
+            Namespace to search and delete from. Must already exist.
+        top_k:
+            Maximum number of chunks to delete. Defaults to 5.
+        filter:
+            Optional metadata filter applied before deleting.
+
+        Returns
+        -------
+        list[dict]
+            The result dicts that were deleted (id, text, score, metadata).
+            Empty list if nothing matched.
+
+        Raises
+        ------
+        KeyError
+            If *namespace* does not exist.
+        TypeError / ValueError
+            On invalid *query* or *top_k*.
+        """
+        engine = self._get_namespace(namespace)
+        return engine.delete_by_query(query, top_k=top_k, filter=filter)
+
     def delete_source(self, filename: str, namespace: str) -> int:
         """Remove all chunks whose ``filename`` metadata equals *filename* from *namespace*.
 

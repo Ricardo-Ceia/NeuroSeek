@@ -608,5 +608,81 @@ class TestNamespaceManagerDeleteSource(unittest.TestCase):
         self.assertNotIn("a.txt", self._mgr.list_sources("ns"))
 
 
+# ---------------------------------------------------------------------------
+# delete_by_query()
+# ---------------------------------------------------------------------------
+
+class TestNamespaceManagerDeleteByQuery(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        self._mgr = NamespaceManager._from_embedder(embedder)
+
+    def test_delete_by_query_returns_list(self):
+        self._mgr.add("dogs are great pets", namespace="ns")
+        result = self._mgr.delete_by_query("dogs", "ns")
+        self.assertIsInstance(result, list)
+
+    def test_delete_by_query_returns_result_dicts(self):
+        self._mgr.add("cats are curious animals", namespace="ns")
+        results = self._mgr.delete_by_query("cats", "ns", top_k=1)
+        for r in results:
+            self.assertIn("id", r)
+            self.assertIn("text", r)
+            self.assertIn("score", r)
+            self.assertIn("metadata", r)
+
+    def test_delete_by_query_removes_from_namespace(self):
+        self._mgr.add("dogs and puppies are great", namespace="ns", id=0)
+        self._mgr.add("quantum physics", namespace="ns", id=1)
+        self._mgr.delete_by_query("dogs and puppies", "ns", top_k=1)
+        self.assertEqual(self._mgr.namespace_len("ns"), 1)
+
+    def test_delete_by_query_is_namespace_isolated(self):
+        self._mgr.add("dogs and puppies are great", namespace="ns1", id=0)
+        self._mgr.add("dogs and puppies are great", namespace="ns2", id=0)
+        self._mgr.delete_by_query("dogs and puppies", "ns1", top_k=1)
+        self.assertEqual(self._mgr.namespace_len("ns1"), 0)
+        self.assertEqual(self._mgr.namespace_len("ns2"), 1)
+
+    def test_delete_by_query_top_k_limits_deletions(self):
+        for i in range(6):
+            self._mgr.add(f"document about dogs number {i}", namespace="ns", id=i)
+        self._mgr.delete_by_query("dogs", "ns", top_k=3)
+        self.assertEqual(self._mgr.namespace_len("ns"), 3)
+
+    def test_delete_by_query_empty_engine_returns_empty_list(self):
+        self._mgr.create_namespace("ns")
+        result = self._mgr.delete_by_query("anything", "ns")
+        self.assertEqual(result, [])
+
+    def test_delete_by_query_missing_namespace_raises_key_error(self):
+        with self.assertRaises(KeyError):
+            self._mgr.delete_by_query("query", "does_not_exist")
+
+    def test_delete_by_query_invalid_query_raises_type_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(TypeError):
+            self._mgr.delete_by_query(123, "ns")  # type: ignore
+
+    def test_delete_by_query_empty_query_raises_value_error(self):
+        self._mgr.create_namespace("ns")
+        with self.assertRaises(ValueError):
+            self._mgr.delete_by_query("", "ns")
+
+    def test_delete_by_query_with_filter(self):
+        self._mgr.add("dogs bark loudly", namespace="ns", id=0, metadata={"type": "animal"})
+        self._mgr.add("dogs in cartoons", namespace="ns", id=1, metadata={"type": "fiction"})
+        deleted = self._mgr.delete_by_query("dogs", "ns", top_k=5, filter={"type": "animal"})
+        deleted_ids = {r["id"] for r in deleted}
+        self.assertIn(0, deleted_ids)
+        self.assertNotIn(1, deleted_ids)
+
+    def test_delete_by_query_reduces_total_len(self):
+        self._mgr.add("dogs and puppies are great", namespace="ns", id=0)
+        self._mgr.delete_by_query("dogs", "ns", top_k=1)
+        self.assertEqual(len(self._mgr), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

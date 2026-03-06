@@ -640,3 +640,91 @@ class TestCmdDelete:
             ["--index", "/tmp/x.pkl", "delete", "report.txt", "--namespace", "myns"]
         )
         assert args.namespace == "myns"
+
+    def test_delete_no_filename_no_query_exit_one(self, idx, capsys):
+        code, _, err = run(["delete"], capsys, idx)
+        assert code == 1
+        assert "FILENAME" in err or "filename" in err.lower() or "query" in err.lower()
+
+
+# ---------------------------------------------------------------------------
+# cmd_delete --query
+# ---------------------------------------------------------------------------
+
+
+class TestCmdDeleteByQuery:
+    @pytest.fixture(autouse=True)
+    def pre_index(self, tmp, idx, capsys):
+        """Index two files before each query-delete test."""
+        self.tmp = tmp
+        self.idx = idx
+        write_file(tmp, "dogs.txt", "dogs and puppies are wonderful loyal companions")
+        write_file(tmp, "space.txt", "black holes warp spacetime and swallow light")
+        run(["index", str(tmp)], capsys, idx)
+
+    def test_delete_query_exit_zero(self, idx, capsys):
+        code, _, _ = run(["delete", "--query", "dogs and puppies"], capsys, idx)
+        assert code == 0
+
+    def test_delete_query_prints_matched_chunks(self, idx, capsys):
+        _, out, _ = run(["delete", "--query", "dogs and puppies"], capsys, idx)
+        assert "Matched" in out
+        assert "chunk" in out.lower()
+
+    def test_delete_query_prints_deleted_count(self, idx, capsys):
+        _, out, _ = run(["delete", "--query", "dogs and puppies"], capsys, idx)
+        assert "Deleted" in out
+
+    def test_delete_query_reduces_chunk_count(self, idx, capsys):
+        count_before = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        run(["delete", "--query", "dogs and puppies", "--top-k", "1"], capsys, idx)
+        count_after = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        assert count_after < count_before
+
+    def test_delete_query_persists_to_disk(self, idx, capsys):
+        run(["delete", "--query", "dogs and puppies", "--top-k", "1"], capsys, idx)
+        manager = _load_manager(idx)
+        # After delete, a search should return fewer results than before
+        results = manager.search("dogs and puppies", DEFAULT_NAMESPACE, top_k=10)
+        assert len(results) < _load_manager(idx).namespace_len(DEFAULT_NAMESPACE) + 1
+
+    def test_delete_query_dry_run_does_not_modify_index(self, idx, capsys):
+        count_before = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        run(["delete", "--query", "dogs", "--dry-run"], capsys, idx)
+        count_after = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        assert count_before == count_after
+
+    def test_delete_query_dry_run_prints_dry_run_message(self, idx, capsys):
+        _, out, _ = run(["delete", "--query", "dogs", "--dry-run"], capsys, idx)
+        assert "Dry run" in out or "dry run" in out.lower()
+
+    def test_delete_query_no_index_exit_one(self, tmp, capsys):
+        missing_idx = tmp / "no_index.pkl"
+        code, _, err = run(["delete", "--query", "dogs"], capsys, missing_idx)
+        assert code == 1
+        assert "index" in err.lower()
+
+    def test_delete_query_unknown_namespace_exit_one(self, idx, capsys):
+        code, _, err = run(
+            ["delete", "--query", "dogs", "--namespace", "ghost"], capsys, idx
+        )
+        assert code == 1
+        assert "ghost" in err or "Namespace" in err
+
+    def test_delete_query_top_k_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "delete", "--query", "dogs", "--top-k", "3"]
+        )
+        assert args.query == "dogs"
+        assert args.top_k == 3
+        assert args.filename is None
+
+    def test_delete_query_dry_run_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "delete", "--query", "dogs", "--dry-run"]
+        )
+        assert args.dry_run is True
+
+

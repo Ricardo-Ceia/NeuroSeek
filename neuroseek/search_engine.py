@@ -194,6 +194,44 @@ class SearchEngine:
 
         return assigned_ids
 
+    def delete_by_query(
+        self,
+        query: str,
+        top_k: int = 5,
+        filter: Optional[dict] = None,  # noqa: A002
+    ) -> list[dict]:
+        """Search for *query* and delete all matching documents.
+
+        Runs ``search(query, top_k, filter)``, deletes every returned
+        document, and returns the list of result dicts that were deleted
+        (same structure as :meth:`search`).
+
+        Parameters
+        ----------
+        query:
+            Non-empty query string.
+        top_k:
+            Maximum number of chunks to delete. Defaults to 5.
+        filter:
+            Optional metadata filter applied before deleting.
+
+        Returns
+        -------
+        list[dict]
+            The result dicts that were deleted (id, text, score, metadata),
+            sorted by score descending.  Empty list if nothing matched.
+
+        Raises
+        ------
+        TypeError / ValueError
+            Same as :meth:`search`.
+        """
+        results = self.search(query, top_k=top_k, filter=filter)
+        for result in results:
+            self._index.delete_vector(result["id"])
+            self._store.delete(result["id"])
+        return results
+
     def delete_by_source(self, filename: str) -> int:
         """Remove all documents whose ``filename`` metadata value equals *filename*.
 
