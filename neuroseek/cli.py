@@ -34,6 +34,10 @@ from neuroseek.persistence.namespace_manager_persistence import (
     load_namespace_manager,
     save_namespace_manager,
 )
+from neuroseek.persistence.json_persistence import (
+    export_namespace_manager,
+    import_from_json,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -391,6 +395,90 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    """Handle ``neuroseek export <output.json> [--namespace NS]``."""
+    index_path = _resolve_index_path(args.index)
+    output_path = Path(args.output)
+    namespace = getattr(args, "namespace", None)
+
+    if not index_path.exists():
+        print("No index found. Run `neuroseek index <path>` first.", file=sys.stderr)
+        return 1
+
+    manager = _load_manager(index_path)
+
+    if namespace is not None and namespace not in manager.list_namespaces():
+        print(
+            f"Namespace {namespace!r} not found. "
+            f"Available: {manager.list_namespaces()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        export_namespace_manager(manager, output_path, namespace=namespace)
+    except KeyError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    # Count total chunks exported
+    if namespace is not None:
+        ns_list = [namespace]
+    else:
+        ns_list = manager.list_namespaces()
+
+    total_chunks = sum(manager.namespace_len(ns) for ns in ns_list)
+    print(
+        f"Exported {total_chunks} chunk(s) from {len(ns_list)} namespace(s) "
+        f"to {str(output_path)!r}."
+    )
+    return 0
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    """Handle ``neuroseek import <input.json> [--namespace NS]``."""
+    index_path = _resolve_index_path(args.index)
+    input_path = Path(args.input)
+    target_namespace = getattr(args, "namespace", None)
+
+    manager = _load_manager(index_path)
+
+    # Build namespace_map if --namespace was given: every source namespace
+    # is redirected to the single target namespace.
+    namespace_map: dict[str, str] | None = None
+    if target_namespace is not None:
+        import json as _json
+        try:
+            with input_path.open("r", encoding="utf-8") as fh:
+                payload = _json.load(fh)
+            src_namespaces = list(payload.get("namespaces", {}).keys())
+        except FileNotFoundError:
+            print(f"Error: file not found: {str(input_path)!r}", file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"Error reading JSON: {exc}", file=sys.stderr)
+            return 1
+        namespace_map = {ns: target_namespace for ns in src_namespaces}
+
+    try:
+        counts = import_from_json(input_path, manager, namespace_map=namespace_map)
+    except FileNotFoundError:
+        print(f"Error: file not found: {str(input_path)!r}", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    if not counts:
+        print("Nothing imported (empty file).")
+        return 0
+
+    _save_manager(manager, index_path)
+    for ns, count in sorted(counts.items()):
+        print(f"Imported {count} chunk(s) into namespace {ns!r}.")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -549,6 +637,45 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Namespace to inspect (default: {DEFAULT_NAMESPACE!r}).",
     )
     p_list_sources.set_defaults(func=cmd_list_sources)
+
+    # -- export --
+    p_export = subparsers.add_parser(
+        "export",
+        help="Export the index (or a namespace) to a JSON file.",
+    )
+    p_export.add_argument(
+        "output",
+        metavar="OUTPUT",
+        help="Destination JSON file path.",
+    )
+    p_export.add_argument(
+        "--namespace",
+        metavar="NS",
+        default=None,
+        help="Export only this namespace (default: export all).",
+    )
+    p_export.set_defaults(func=cmd_export)
+
+    # -- import --
+    p_import = subparsers.add_parser(
+        "import",
+        help="Import chunks from a JSON export file into the index.",
+    )
+    p_import.add_argument(
+        "input",
+        metavar="INPUT",
+        help="Source JSON file path.",
+    )
+    p_import.add_argument(
+        "--namespace",
+        metavar="NS",
+        default=None,
+        help=(
+            "Import all data into this single target namespace "
+            "(default: use source namespace names)."
+        ),
+    )
+    p_import.set_defaults(func=cmd_import)
 
     return parser
 

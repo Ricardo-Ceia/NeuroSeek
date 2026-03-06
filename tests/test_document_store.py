@@ -685,5 +685,104 @@ class TestDocumentStoreListSources(unittest.TestCase):
         self.assertEqual(result, {"a.txt", "b.md"})
 
 
+class TestDocumentStoreAllDocuments(unittest.TestCase):
+
+    def setUp(self):
+        self.store = DocumentStore()
+
+    # --- Return type and shape ---
+
+    def test_returns_list(self):
+        self.assertIsInstance(self.store.all_documents(), list)
+
+    def test_empty_store_returns_empty_list(self):
+        self.assertEqual(self.store.all_documents(), [])
+
+    def test_each_element_is_dict(self):
+        self.store.add("text", id=0)
+        for item in self.store.all_documents():
+            self.assertIsInstance(item, dict)
+
+    def test_each_element_has_required_keys(self):
+        self.store.add("text", id=0)
+        item = self.store.all_documents()[0]
+        self.assertIn("id", item)
+        self.assertIn("text", item)
+        self.assertIn("metadata", item)
+
+    # --- Content correctness ---
+
+    def test_single_document_id_matches(self):
+        self.store.add("hello", id=7)
+        docs = self.store.all_documents()
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["id"], 7)
+
+    def test_single_document_text_matches(self):
+        self.store.add("hello world", id=0)
+        self.assertEqual(self.store.all_documents()[0]["text"], "hello world")
+
+    def test_single_document_metadata_matches(self):
+        self.store.add("text", id=0, metadata={"source": "web", "year": 2024})
+        self.assertEqual(
+            self.store.all_documents()[0]["metadata"],
+            {"source": "web", "year": 2024},
+        )
+
+    def test_no_metadata_returns_empty_dict(self):
+        self.store.add("text", id=0)
+        self.assertEqual(self.store.all_documents()[0]["metadata"], {})
+
+    # --- Ordering ---
+
+    def test_sorted_by_id_ascending(self):
+        self.store.add("c", id=10)
+        self.store.add("a", id=2)
+        self.store.add("b", id=5)
+        ids = [d["id"] for d in self.store.all_documents()]
+        self.assertEqual(ids, [2, 5, 10])
+
+    def test_auto_assigned_ids_sorted(self):
+        self.store.add("first")
+        self.store.add("second")
+        self.store.add("third")
+        ids = [d["id"] for d in self.store.all_documents()]
+        self.assertEqual(ids, sorted(ids))
+
+    # --- Count ---
+
+    def test_count_matches_store_length(self):
+        for i in range(5):
+            self.store.add(f"doc {i}")
+        self.assertEqual(len(self.store.all_documents()), len(self.store))
+
+    # --- Isolation: mutating returned list does not affect store ---
+
+    def test_returned_metadata_is_a_copy(self):
+        self.store.add("text", id=0, metadata={"key": "original"})
+        docs = self.store.all_documents()
+        docs[0]["metadata"]["key"] = "mutated"
+        self.assertEqual(self.store.all_documents()[0]["metadata"]["key"], "original")
+
+    # --- After delete ---
+
+    def test_deleted_doc_absent_from_result(self):
+        self.store.add("keep", id=0)
+        self.store.add("remove", id=1)
+        self.store.delete(1)
+        ids = [d["id"] for d in self.store.all_documents()]
+        self.assertNotIn(1, ids)
+        self.assertIn(0, ids)
+
+    # --- Multiple docs ---
+
+    def test_multiple_docs_all_present(self):
+        texts = ["alpha", "beta", "gamma"]
+        for t in texts:
+            self.store.add(t)
+        returned_texts = {d["text"] for d in self.store.all_documents()}
+        self.assertEqual(returned_texts, set(texts))
+
+
 if __name__ == "__main__":
     unittest.main()

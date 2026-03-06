@@ -337,6 +337,23 @@ class DocumentStore:
             if key in entry["metadata"]
         }
 
+    def all_documents(self) -> list[dict]:
+        """Return all documents as a list of dicts, sorted by ID ascending.
+
+        Each dict has the shape::
+
+            {"id": int, "text": str, "metadata": dict}
+
+        Returns
+        -------
+        list[dict]
+            Every document currently in the store, ordered by ID.
+        """
+        return [
+            {"id": doc_id, "text": entry["text"], "metadata": dict(entry["metadata"])}
+            for doc_id, entry in sorted(self._store.items())
+        ]
+
     def __len__(self) -> int:
         """Return the number of documents currently in the store."""
         return len(self._store)

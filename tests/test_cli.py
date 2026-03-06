@@ -914,3 +914,211 @@ class TestCmdUpdate:
             ["--index", "/tmp/x.pkl", "update", "/f.txt", "--chunk-size", "64"]
         )
         assert args.chunk_size == 64
+
+
+# ---------------------------------------------------------------------------
+# cmd_export
+# ---------------------------------------------------------------------------
+
+
+class TestCmdExport:
+    @pytest.fixture(autouse=True)
+    def pre_index(self, tmp, idx, capsys):
+        """Index two files before each export test."""
+        self.tmp = tmp
+        self.idx = idx
+        write_file(tmp, "dogs.txt", "dogs and puppies are wonderful loyal companions")
+        write_file(tmp, "space.txt", "black holes warp spacetime and swallow light")
+        run(["index", str(tmp)], capsys, idx)
+
+    # --- Basic behaviour ---
+
+    def test_export_exit_zero(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        code, _, _ = run(["export", str(out)], capsys, idx)
+        assert code == 0
+
+    def test_export_creates_file(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        run(["export", str(out)], capsys, idx)
+        assert out.exists()
+
+    def test_export_produces_valid_json(self, tmp, idx, capsys):
+        import json as _json
+        out = tmp / "out.json"
+        run(["export", str(out)], capsys, idx)
+        with out.open() as fh:
+            payload = _json.load(fh)
+        assert isinstance(payload, dict)
+
+    def test_export_prints_chunk_count(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        _, stdout, _ = run(["export", str(out)], capsys, idx)
+        assert "chunk" in stdout.lower()
+
+    def test_export_prints_namespace_count(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        _, stdout, _ = run(["export", str(out)], capsys, idx)
+        assert "namespace" in stdout.lower()
+
+    def test_export_output_contains_path(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        _, stdout, _ = run(["export", str(out)], capsys, idx)
+        assert "out.json" in stdout
+
+    # --- Single namespace ---
+
+    def test_export_single_namespace_exit_zero(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        code, _, _ = run(["export", str(out), "--namespace", "default"], capsys, idx)
+        assert code == 0
+
+    def test_export_single_namespace_only_exports_that_ns(self, tmp, idx, capsys):
+        import json as _json
+        # Add second namespace
+        write_file(tmp, "extra.txt", "extra document in other namespace")
+        run(["index", str(tmp / "extra.txt"), "--namespace", "other"], capsys, idx)
+        out = tmp / "out.json"
+        run(["export", str(out), "--namespace", "default"], capsys, idx)
+        with out.open() as fh:
+            payload = _json.load(fh)
+        assert list(payload["namespaces"].keys()) == ["default"]
+
+    def test_export_unknown_namespace_exit_one(self, tmp, idx, capsys):
+        out = tmp / "out.json"
+        code, _, err = run(["export", str(out), "--namespace", "ghost"], capsys, idx)
+        assert code == 1
+        assert "ghost" in err or "Namespace" in err or "not found" in err.lower()
+
+    # --- No index ---
+
+    def test_export_no_index_exit_one(self, tmp, capsys):
+        missing_idx = tmp / "no_index.pkl"
+        out = tmp / "out.json"
+        code, _, err = run(["export", str(out)], capsys, missing_idx)
+        assert code == 1
+        assert "index" in err.lower()
+
+    # --- Parser ---
+
+    def test_export_subcommand_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "export", "/tmp/out.json"])
+        assert args.command == "export"
+        assert args.output == "/tmp/out.json"
+        assert args.namespace is None
+
+    def test_export_namespace_flag_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "export", "/tmp/out.json", "--namespace", "myns"]
+        )
+        assert args.namespace == "myns"
+
+
+# ---------------------------------------------------------------------------
+# cmd_import
+# ---------------------------------------------------------------------------
+
+
+class TestCmdImport:
+    @pytest.fixture()
+    def exported_json(self, tmp, idx, capsys):
+        """Index a file, export it, and return the JSON path."""
+        write_file(tmp, "source.txt", "the mitochondria is the powerhouse of the cell")
+        run(["index", str(tmp / "source.txt")], capsys, idx)
+        out = tmp / "export.json"
+        run(["export", str(out)], capsys, idx)
+        return out
+
+    # --- Basic behaviour ---
+
+    def test_import_exit_zero(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        code, _, _ = run(["import", str(exported_json)], capsys, fresh_idx)
+        assert code == 0
+
+    def test_import_prints_chunk_count(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        _, stdout, _ = run(["import", str(exported_json)], capsys, fresh_idx)
+        assert "Imported" in stdout
+        assert "chunk" in stdout.lower()
+
+    def test_import_creates_index(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        run(["import", str(exported_json)], capsys, fresh_idx)
+        assert fresh_idx.exists()
+
+    def test_import_adds_documents_to_manager(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        run(["import", str(exported_json)], capsys, fresh_idx)
+        manager = _load_manager(fresh_idx)
+        assert "default" in manager.list_namespaces()
+        assert manager.namespace_len("default") > 0
+
+    def test_imported_content_is_searchable(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        run(["import", str(exported_json)], capsys, fresh_idx)
+        code, out, _ = run(["search", "powerhouse cell"], capsys, fresh_idx)
+        assert code == 0
+        assert out.strip() != ""
+
+    # --- --namespace flag ---
+
+    def test_import_namespace_flag_redirects_to_target(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        run(["import", str(exported_json), "--namespace", "imported"], capsys, fresh_idx)
+        manager = _load_manager(fresh_idx)
+        assert "imported" in manager.list_namespaces()
+
+    def test_import_namespace_flag_source_absent(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        run(["import", str(exported_json), "--namespace", "imported"], capsys, fresh_idx)
+        manager = _load_manager(fresh_idx)
+        assert "default" not in manager.list_namespaces()
+
+    def test_import_namespace_flag_content_searchable(self, tmp, idx, capsys, exported_json):
+        fresh_idx = tmp / "fresh.pkl"
+        run(["import", str(exported_json), "--namespace", "imported"], capsys, fresh_idx)
+        code, out, _ = run(
+            ["search", "powerhouse cell", "--namespace", "imported"], capsys, fresh_idx
+        )
+        assert code == 0
+        assert out.strip() != ""
+
+    # --- Error conditions ---
+
+    def test_import_missing_file_exit_one(self, tmp, capsys):
+        fresh_idx = tmp / "fresh.pkl"
+        code, _, err = run(["import", str(tmp / "ghost.json")], capsys, fresh_idx)
+        assert code == 1
+        assert "not found" in err.lower() or "Error" in err
+
+    def test_import_bad_version_exit_one(self, tmp, capsys):
+        import json as _json
+        bad_json = tmp / "bad.json"
+        bad_json.write_text(
+            _json.dumps({"neuroseek_version": "99", "namespaces": {}}),
+            encoding="utf-8",
+        )
+        fresh_idx = tmp / "fresh.pkl"
+        code, _, err = run(["import", str(bad_json)], capsys, fresh_idx)
+        assert code == 1
+        assert "Error" in err
+
+    # --- Parser ---
+
+    def test_import_subcommand_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "import", "/tmp/in.json"])
+        assert args.command == "import"
+        assert args.input == "/tmp/in.json"
+        assert args.namespace is None
+
+    def test_import_namespace_flag_in_parser(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "import", "/tmp/in.json", "--namespace", "myns"]
+        )
+        assert args.namespace == "myns"
+
