@@ -2,7 +2,7 @@
 # Install with: pip install -r benchmarks/requirements.txt
 
 # The library under test
-neuroseek>=0.1.0
+neuroseek>=0.2.0
 
 # Embedding model (shared across all vector runners)
 sentence-transformers>=5.0.0
