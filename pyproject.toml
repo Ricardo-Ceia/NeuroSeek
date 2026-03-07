@@ -44,9 +44,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/anomalyco/neuroseek"
-Repository = "https://github.com/anomalyco/neuroseek"
-"Bug Tracker" = "https://github.com/anomalyco/neuroseek/issues"
+Homepage = "https://github.com/Ricardo-Ceia/NeuroSeek"
+Repository = "https://github.com/Ricardo-Ceia/NeuroSeek"
+"Bug Tracker" = "https://github.com/Ricardo-Ceia/NeuroSeek/issues"
 
 [project.scripts]
 neuroseek = "neuroseek.cli:main"
