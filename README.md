@@ -1,6 +1,6 @@
 # NeuroSeek
 
-NeuroSeek is a semantic search engine for your own content. You give it text — from files, directories, or strings — and it finds the passages that mean what you're looking for, not just the ones that share your exact words. It runs entirely locally, stores everything in a single file, and requires no server. The core is ~400 lines of Python built on an HNSW graph and sentence-transformers.
+NeuroSeek is a semantic search engine for your own content. You give it text — from files, directories, or strings — and it finds the passages that mean what you're looking for, not just the ones that share your exact words. It runs entirely locally, stores everything in a single file, and requires no server. The core is ~1 100 lines of pure Python built on an HNSW graph and sentence-transformers.
 
 ```python
 from neuroseek import SearchEngine
@@ -167,11 +167,37 @@ from neuroseek.persistence.json_persistence import export_namespace_manager, imp
 
 ---
 
+## Benchmarks
+
+MS MARCO (10 000 passages, 26 queries, top-10, `multi-qa-MiniLM-L6-cos-v1`, DIM=384):
+
+| System | Build | p50 search | R@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|
+| **NeuroSeek** | 111 s | 24 ms | **0.96** | **0.58** | **0.67** |
+| hnswlib | 1.8 s | 23 ms | 0.92 | 0.56 | 0.65 |
+| FAISS | 2.4 s | 23 ms | 0.96 | 0.58 | 0.67 |
+| ChromaDB | 4.8 s | 31 ms | 0.96 | 0.58 | 0.67 |
+| BM25 | 0.9 s | 35 ms | 0.65 | 0.30 | 0.38 |
+
+Search latency and retrieval quality match compiled C++ libraries (hnswlib, FAISS, ChromaDB). Index build time is slower: pure Python graph traversal carries overhead that compiled libraries avoid. For 10k documents, 111 s is a one-time cost paid at startup.
+
+To reproduce: `pip install -r benchmarks/requirements.txt && python3 -m benchmarks.run --passages 10000 --queries 200 --top-k 10`
+
+---
+
 ## How it works
 
 NeuroSeek embeds every document chunk into a 384-dimensional vector using `multi-qa-MiniLM-L6-cos-v1`, a model trained specifically for semantic search. At query time the query string is embedded the same way, and the engine finds the nearest vectors in the HNSW graph by cosine similarity.
 
-[HNSW](https://arxiv.org/abs/1603.09320) (Hierarchical Navigable Small World) is an approximate nearest-neighbour algorithm. It builds a layered graph where each node connects to its `M` closest neighbours. Search navigates down the layers greedily, reaching the neighbourhood of the query vector in O(log n) hops. The result is fast, high-recall search that scales well — no brute-force distance computation over the entire index.
+[HNSW](https://arxiv.org/abs/1603.09320) (Hierarchical Navigable Small World) is an approximate nearest-neighbour algorithm. It builds a layered graph where each node connects to its `M` closest neighbours. Search navigates down the layers greedily, reaching the neighbourhood of the query vector in O(log n) hops.
+
+The implementation follows the paper closely:
+
+- Vectors are pre-normalised at insertion time and stored in a contiguous `float32` numpy matrix. Cosine distance becomes a single dot product with no norm recomputation.
+- Candidate neighbour distances are computed in one batched BLAS call (`matrix[rows] @ query`) rather than one Python loop per neighbour.
+- Layer assignment uses the paper formula `floor(-ln(u) / ln(M))` which produces O(log_M N) layers — typically 3–4 for 10k vectors.
+- Neighbour selection uses Algorithm 4 (heuristic selection): a candidate is kept only if it is closer to the query than to any already-selected neighbour, ensuring diverse graph connectivity and high recall.
+- Deletion is O(degree × L) using a reverse-adjacency index rather than O(N × L × M) full scan.
 
 The index and document store are serialised together into a single pickle file with a version header. Loading a file from a different version raises a clear `ValueError` rather than silently returning wrong results.
 
