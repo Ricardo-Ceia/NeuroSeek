@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Vector:
     def __init__(self, size):
         self.size = size
@@ -73,10 +76,7 @@ class Vector:
         return self.dot(other)
 
     def norm(self):
-        result = 0
-        for i in range(len(self)):
-            result += self.data[i] ** 2
-        return result ** 0.5
+        return float(np.linalg.norm(self.data))
 
     def __eq__(self, other):
         if not isinstance(other, Vector):
@@ -107,9 +107,10 @@ class Vector:
             raise TypeError(f"unsupported operand type(s) for cosine_similarity: 'Vector' and '{type(other).__name__}'")
         if len(self) != len(other):
             raise ValueError("Vectors must be the same size to apply cosine similarity on them.")
-        dot_product = self.dot(other)
-        norm_self = self.norm()
-        norm_other = other.norm()
-        if norm_self == 0 or norm_other == 0:
+        a = np.array(self.data, dtype=np.float64)
+        b = np.array(other.data, dtype=np.float64)
+        norm_a = float(np.linalg.norm(a))
+        norm_b = float(np.linalg.norm(b))
+        if norm_a == 0 or norm_b == 0:
             raise ValueError("Cosine similarity is not defined for zero-length vectors.")
-        return dot_product / (norm_self * norm_other)
+        return float(np.dot(a, b) / (norm_a * norm_b))

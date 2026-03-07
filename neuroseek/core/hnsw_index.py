@@ -1,8 +1,11 @@
 import heapq
 import random
 import math
+import numpy as np
 from neuroseek.core.vector import Vector
 from neuroseek.core.hnsw_node import HNSWNode
+
+_INITIAL_CAPACITY = 256
 
 
 class HNSWIndex:
@@ -16,26 +19,132 @@ class HNSWIndex:
         self.num_vectors = 0
         self._next_id = 0  # Monotonically increasing; never decremented on delete
 
-    def _get_random_layer(self):
-        level = 0
-        while random.random() < 0.5 and level < self.maxLayers:
-            level += 1
-        return level
+        # --- numpy vector matrix -----------------------------------------------
+        # Rows are dense; _id_to_row / _row_to_id map between node IDs and rows.
+        # _free_rows holds row indices that were freed by delete_vector so they
+        # can be reused without growing the matrix.
+        # _dim is set on first insertion and validated on every subsequent one.
+        self._dim: int = 0
+        self._capacity: int = _INITIAL_CAPACITY
+        self._matrix: np.ndarray = np.empty((0, 0), dtype=np.float32)
+        self._id_to_row: dict[int, int] = {}
+        self._row_to_id: dict[int, int] = {}
+        self._free_rows: list[int] = []
 
-    def _distance(self, v1, v2):
-        return 1 - v1.cosine_similarity(v2)  # Convert similarity to distance
+        # --- reverse adjacency for O(degree) delete ----------------------------
+        # _reverse_adj[node_id] = set of node_ids that have node_id as a neighbor
+        # (across all layers).  Maintained in sync with HNSWNode.connections.
+        self._reverse_adj: dict[int, set[int]] = {}
 
-    def _search_layer_from(self, query, entry_node, ef, layer, exclude_id=None):
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_random_layer(self) -> int:
+        """Return a random layer using the HNSW paper formula.
+
+        level = floor(-ln(uniform(0,1)) / ln(M))  capped at maxLayers-1.
+        This produces ~log_M(N) layers instead of the O(log_2(N)) layers that
+        the old coin-flip approach generated.
+        """
+        level = int(-math.log(random.random()) / math.log(max(self.M, 2)))
+        return min(level, self.maxLayers - 1)
+
+    def _distance(self, v1: Vector, v2: Vector) -> float:
+        """Fallback scalar distance used outside the hot search path."""
+        return 1.0 - v1.cosine_similarity(v2)
+
+    def _ensure_matrix(self, dim: int) -> None:
+        """Allocate or grow the numpy matrix to hold at least one more vector."""
+        if self._dim == 0:
+            # First insertion — fix dimension and allocate.
+            self._dim = dim
+            self._matrix = np.empty((_INITIAL_CAPACITY, dim), dtype=np.float32)
+            self._capacity = _INITIAL_CAPACITY
+        elif dim != self._dim:
+            raise ValueError(
+                f"Vector dimension {dim} does not match index dimension {self._dim}"
+            )
+        else:
+            # Grow if needed (no free rows left and matrix is full).
+            used = len(self._id_to_row)
+            if used >= self._capacity and not self._free_rows:
+                new_cap = self._capacity * 2
+                new_mat = np.empty((new_cap, self._dim), dtype=np.float32)
+                new_mat[: self._capacity] = self._matrix
+                self._matrix = new_mat
+                self._capacity = new_cap
+
+    def _alloc_row(self, node_id: int, vec_np: np.ndarray) -> int:
+        """Assign a matrix row for node_id and store the pre-normalised vector."""
+        if self._free_rows:
+            row = self._free_rows.pop()
+        else:
+            row = len(self._id_to_row)
+        self._matrix[row] = vec_np
+        self._id_to_row[node_id] = row
+        self._row_to_id[row] = node_id
+        return row
+
+    def _free_row(self, node_id: int) -> None:
+        """Release the matrix row held by node_id."""
+        row = self._id_to_row.pop(node_id, None)
+        if row is not None:
+            self._row_to_id.pop(row, None)
+            self._free_rows.append(row)
+
+    def _query_np(self, query: Vector) -> np.ndarray:
+        """Return a normalised float32 numpy array for query."""
+        arr = np.array(query.data, dtype=np.float32)
+        n = np.linalg.norm(arr)
+        if n == 0:
+            raise ValueError("Query vector has zero norm.")
+        return arr / n
+
+    def _dist_row(self, row: int, query_np: np.ndarray) -> float:
+        """Cosine distance between a stored (pre-normalised) row and query_np."""
+        return 1.0 - float(self._matrix[row] @ query_np)
+
+    def _dist_rows_batch(self, rows: list[int], query_np: np.ndarray) -> np.ndarray:
+        """Vectorised cosine distances for a batch of rows."""
+        return 1.0 - self._matrix[rows] @ query_np  # shape (len(rows),)
+
+    def _add_edge(self, src_id: int, dst_id: int, dist: float, layer: int) -> None:
+        """Add a directed edge src→dst and update reverse adjacency."""
+        self.id_to_node[src_id].add_connection(dst_id, dist, layer)
+        self._reverse_adj.setdefault(dst_id, set()).add(src_id)
+
+    def _remove_edge(self, src_id: int, dst_id: int, layer: int) -> None:
+        """Remove directed edge src→dst and update reverse adjacency."""
+        node = self.id_to_node[src_id]
+        if layer in node.connections:
+            node.connections[layer] = [
+                (nid, d) for nid, d in node.connections[layer] if nid != dst_id
+            ]
+        rev = self._reverse_adj.get(dst_id)
+        if rev is not None:
+            rev.discard(src_id)
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+
+    def _search_layer_from(
+        self,
+        query: Vector,
+        entry_node: HNSWNode,
+        ef: int,
+        layer: int,
+        exclude_id: int | None = None,
+        query_np: np.ndarray | None = None,
+    ) -> list[tuple[int, float]]:
         """Search a single layer starting from a given entry node.
 
-        Unlike the old _search_layer, this accepts an explicit entry_node and
-        never reads or writes self.entry_point, making it safe to call from
-        both add_vector (construction) and search (query time).
+        Uses pre-normalised numpy rows for all distance computations:
+        - Entry-point distance: single dot product.
+        - Candidate neighbours: batched dot product over all unvisited neighbours.
 
-        If entry_node does not participate in the requested layer, the search
-        falls back to any node that does exist in that layer (skipping
-        exclude_id, which is used to avoid the newly-inserted node during
-        construction).
+        Returns list of (node_id, distance) sorted ascending, length <= ef.
         """
         if not self.layers or layer >= len(self.layers) or not self.layers[layer]:
             return []
@@ -45,50 +154,74 @@ class HNSWIndex:
         if entry_node.id not in self.layers[layer]:
             fallback_id = next(
                 (nid for nid in self.layers[layer] if nid != exclude_id),
-                None
+                None,
             )
             if fallback_id is None:
-                return []  # layer has only the new node itself
+                return []
             entry_node = self.id_to_node[fallback_id]
 
-        visited = set()
-        entry_dist = self._distance(query, entry_node.vector)
+        if query_np is None:
+            query_np = self._query_np(query)
+
+        # Entry point distance — single dot product on pre-normalised row.
+        ep_row = self._id_to_row.get(entry_node.id)
+        if ep_row is None:
+            return []
+        entry_dist = self._dist_row(ep_row, query_np)
+
+        visited = {entry_node.id}
         # candidates: min-heap by distance (closest first)
         candidates = [(entry_dist, entry_node.id)]
         # results: max-heap by distance (farthest first, so we can prune)
         results = [(-entry_dist, entry_node.id)]
-        visited.add(entry_node.id)
 
         while candidates:
             current_dist, current_id = heapq.heappop(candidates)
 
-            # Worst (farthest) result so far
             worst_result_dist = -results[0][0]
             if current_dist > worst_result_dist and len(results) >= ef:
                 break
 
             current_node = self.id_to_node[current_id]
+            # Collect all unvisited neighbours in one pass, then batch-compute
+            # distances with a single BLAS call.
+            unvisited_ids: list[int] = []
+            unvisited_rows: list[int] = []
             for neighbor_id, _ in current_node.get_connections(layer):
                 if neighbor_id not in visited:
-                    visited.add(neighbor_id)
-                    neighbor_node = self.id_to_node[neighbor_id]
-                    dist = self._distance(query, neighbor_node.vector)
+                    row = self._id_to_row.get(neighbor_id)
+                    if row is not None:
+                        visited.add(neighbor_id)
+                        unvisited_ids.append(neighbor_id)
+                        unvisited_rows.append(row)
 
+            if not unvisited_ids:
+                continue
+
+            # Batched distance computation — one matrix-vector multiply.
+            dists = self._dist_rows_batch(unvisited_rows, query_np)
+
+            worst_result_dist = -results[0][0]
+            for neighbor_id, dist in zip(unvisited_ids, dists):
+                dist = float(dist)
+                if len(results) < ef or dist < worst_result_dist:
+                    heapq.heappush(candidates, (dist, neighbor_id))
+                    heapq.heappush(results, (-dist, neighbor_id))
+                    if len(results) > ef:
+                        heapq.heappop(results)
                     worst_result_dist = -results[0][0]
-                    if len(results) < ef or dist < worst_result_dist:
-                        heapq.heappush(candidates, (dist, neighbor_id))
-                        heapq.heappush(results, (-dist, neighbor_id))
-                        if len(results) > ef:
-                            heapq.heappop(results)
 
-        # Convert max-heap back to sorted list [(node_id, dist), ...] ascending
         sorted_results = sorted(
             [(nid, -neg_dist) for neg_dist, nid in results],
-            key=lambda x: x[1]
+            key=lambda x: x[1],
         )
         return sorted_results[:ef]
 
-    def add_vector(self, vector, id=None):
+    # ------------------------------------------------------------------
+    # Insertion
+    # ------------------------------------------------------------------
+
+    def add_vector(self, vector: Vector, id: int | None = None) -> int:
         if not isinstance(vector, Vector):
             raise TypeError(f"vector must be a Vector, not {type(vector).__name__}")
 
@@ -104,65 +237,86 @@ class HNSWIndex:
         if id in self.id_to_node:
             raise ValueError(f"ID {id} already exists")
 
-        # Keep _next_id strictly ahead of every manually-supplied ID so that
-        # future auto-IDs never collide with IDs that were (or will be) used
-        # manually — even if those manual IDs have since been deleted.
         if id >= self._next_id:
             self._next_id = id + 1
+
+        # Pre-normalise vector and store in the numpy matrix.
+        dim = len(vector)
+        self._ensure_matrix(dim)
+        arr = np.array(vector.data, dtype=np.float32)
+        norm = np.linalg.norm(arr)
+        if norm == 0:
+            raise ValueError("Cannot insert a zero-norm vector into HNSWIndex.")
+        arr_norm = arr / norm
+        self._alloc_row(id, arr_norm)
 
         node_layer = self._get_random_layer()
         node = HNSWNode(id=id, vector=vector, layer=node_layer)
         self.id_to_node[id] = node
+        self._reverse_adj[id] = set()
         self.num_vectors += 1
 
-        # Expand layer list if needed
+        # Expand layer list if needed.
         while len(self.layers) <= node_layer:
             self.layers.append({})
 
         if self.entry_point is None:
-            # First node — register and make it the entry point immediately
             for lyr in range(node_layer + 1):
                 self.layers[lyr][id] = node
             self.entry_point = node
             return id
 
         ep = self.entry_point
+        # Build a single query_np once; reuse across all layer searches.
+        query_np = arr_norm  # already normalised
 
-        # Phase 1: greedily descend layers ABOVE node_layer — find the best
-        # entry point for the connection-building phase without adding edges.
-        # The new node is NOT yet registered in the layers during this phase so
-        # it does not interfere with the search.
+        # Phase 1: greedy descent through layers ABOVE node_layer.
         for layer in reversed(range(node_layer + 1, len(self.layers))):
-            layer_results = self._search_layer_from(vector, ep, ef=1, layer=layer)
+            layer_results = self._search_layer_from(
+                vector, ep, ef=1, layer=layer, query_np=query_np
+            )
             if layer_results:
                 ep = self.id_to_node[layer_results[0][0]]
 
         # Phase 2: build connections on layers 0..node_layer.
-        # Register the node layer by layer as we descend so it is visible to
-        # back-connections but does not seed its own search.
         for layer in reversed(range(node_layer + 1)):
-            self.layers[layer][id] = node  # register before searching this layer
+            self.layers[layer][id] = node
             neighbors = self._search_layer_from(
-                vector, ep, self.efConstruction, layer, exclude_id=id
+                vector, ep, self.efConstruction, layer,
+                exclude_id=id, query_np=query_np,
             )
-            for neighbor_id, dist in neighbors[:self.M]:
+            for neighbor_id, dist in neighbors[: self.M]:
                 neighbor_node = self.id_to_node[neighbor_id]
-                node.add_connection(neighbor_id, dist, layer)
-                # Only add a back-connection if the neighbor actually exists at this layer
+                self._add_edge(id, neighbor_id, dist, layer)
+                # Back-connection: only if the neighbor participates at this layer
+                # and hasn't yet reached its M-connection cap.
                 if neighbor_node.layer >= layer:
-                    neighbor_node.add_connection(id, dist, layer)
+                    existing = neighbor_node.get_connections(layer)
+                    if len(existing) < self.M:
+                        self._add_edge(neighbor_id, id, dist, layer)
+                    else:
+                        # Replace the farthest back-connection if the new node
+                        # is closer (keeps the graph quality high).
+                        farthest_idx = max(
+                            range(len(existing)), key=lambda i: existing[i][1]
+                        )
+                        if dist < existing[farthest_idx][1]:
+                            old_id = existing[farthest_idx][0]
+                            self._remove_edge(neighbor_id, old_id, layer)
+                            self._add_edge(neighbor_id, id, dist, layer)
             if neighbors:
-                # Best neighbor in this layer is the entry point for the layer below
                 ep = self.id_to_node[neighbors[0][0]]
 
-        # If the new node reaches a higher layer than the current entry point,
-        # it becomes the new global entry point.
         if node_layer >= self.entry_point.layer:
             self.entry_point = node
 
         return id
 
-    def add_vectors(self, vectors, ids=None):
+    def add_vectors(
+        self,
+        vectors: list[Vector],
+        ids: list[int | None] | None = None,
+    ) -> list[int]:
         if not isinstance(vectors, (list, tuple)):
             raise TypeError(f"vectors must be a list or tuple, not {type(vectors).__name__}")
 
@@ -173,7 +327,7 @@ class HNSWIndex:
             raise TypeError(f"ids must be a list, tuple, or None, not {type(ids).__name__}")
 
         if len(vectors) != len(ids):
-            raise ValueError(f"vectors and ids must have the same length")
+            raise ValueError("vectors and ids must have the same length")
 
         for id in ids:
             if id is not None and not isinstance(id, int):
@@ -185,7 +339,11 @@ class HNSWIndex:
 
         return returned_ids
 
-    def get_vector(self, id):
+    # ------------------------------------------------------------------
+    # Retrieval
+    # ------------------------------------------------------------------
+
+    def get_vector(self, id: int) -> Vector:
         if not isinstance(id, int):
             raise TypeError(f"id must be an int, not {type(id).__name__}")
 
@@ -194,7 +352,11 @@ class HNSWIndex:
 
         return self.id_to_node[id].vector
 
-    def delete_vector(self, id):
+    # ------------------------------------------------------------------
+    # Deletion
+    # ------------------------------------------------------------------
+
+    def delete_vector(self, id: int) -> Vector:
         if not isinstance(id, int):
             raise TypeError(f"id must be an int, not {type(id).__name__}")
 
@@ -203,16 +365,38 @@ class HNSWIndex:
 
         node = self.id_to_node[id]
 
+        # Remove from layer dicts.
         for layer in range(node.layer + 1):
             if layer < len(self.layers) and id in self.layers[layer]:
                 del self.layers[layer][id]
 
-        for neighbor_id, neighbor_node in self.id_to_node.items():
-            for layer in neighbor_node.connections:
-                neighbor_node.connections[layer] = [
-                    (nid, dist) for nid, dist in neighbor_node.connections[layer]
-                    if nid != id
-                ]
+        # Use reverse adjacency to find exactly which nodes point TO this node,
+        # then remove only those edges — O(degree × L) instead of O(N × L × M).
+        for src_id in list(self._reverse_adj.get(id, set())):
+            if src_id in self.id_to_node:
+                src_node = self.id_to_node[src_id]
+                for layer in list(src_node.connections.keys()):
+                    src_node.connections[layer] = [
+                        (nid, d) for nid, d in src_node.connections[layer]
+                        if nid != id
+                    ]
+                # Clean up forward-direction reverse-adj entries.
+                for layer_connections in src_node.connections.values():
+                    for (nid, _) in layer_connections:
+                        pass  # already cleaned above via the list comprehension
+
+        # Remove forward-direction reverse-adj entries (this node pointed TO others).
+        for layer_connections in node.connections.values():
+            for (dst_id, _) in layer_connections:
+                rev = self._reverse_adj.get(dst_id)
+                if rev is not None:
+                    rev.discard(id)
+
+        # Free the reverse-adj entry for this node.
+        self._reverse_adj.pop(id, None)
+
+        # Release the numpy matrix row.
+        self._free_row(id)
 
         del self.id_to_node[id]
         self.num_vectors -= 1
@@ -222,18 +406,11 @@ class HNSWIndex:
 
         return node.vector
 
-    def _repair_entry_point(self):
-        """Select a new entry point after the current one has been deleted.
-
-        Scans layers from highest to lowest and picks any surviving node.
-        Also trims trailing empty layers so len(self.layers) stays accurate.
-        If the index is now empty, entry_point is set to None.
-        """
-        # Remove empty top layers
+    def _repair_entry_point(self) -> None:
+        """Select a new entry point after the current one has been deleted."""
         while self.layers and not self.layers[-1]:
             self.layers.pop()
 
-        # Walk remaining layers top-down for a new entry point
         self.entry_point = None
         for layer_dict in reversed(self.layers):
             if layer_dict:
@@ -241,7 +418,13 @@ class HNSWIndex:
                 self.entry_point = self.id_to_node[ep_id]
                 break
 
-    def search(self, query, top_k=5, ef=10):
+    # ------------------------------------------------------------------
+    # Query
+    # ------------------------------------------------------------------
+
+    def search(
+        self, query: Vector, top_k: int = 5, ef: int = 10
+    ) -> list[tuple[int, float]]:
         if not isinstance(query, Vector):
             raise TypeError(f"query must be a Vector, not {type(query).__name__}")
 
@@ -257,19 +440,26 @@ class HNSWIndex:
         if ef < top_k:
             ef = top_k
 
+        query_np = self._query_np(query)
         ep = self.entry_point
 
-        # Greedily descend from the top layer to layer 1, tracking the closest
-        # node as the entry point for the next layer — no state mutation.
         for layer in reversed(range(1, len(self.layers))):
-            layer_results = self._search_layer_from(query, ep, ef=1, layer=layer)
+            layer_results = self._search_layer_from(
+                query, ep, ef=1, layer=layer, query_np=query_np
+            )
             if layer_results:
                 ep = self.id_to_node[layer_results[0][0]]
 
-        final_results = self._search_layer_from(query, ep, ef, layer=0)
+        final_results = self._search_layer_from(
+            query, ep, ef, layer=0, query_np=query_np
+        )
         final_results.sort(key=lambda x: x[1])
 
-        return [(node_id, 1 - dist) for node_id, dist in final_results[:top_k]]
+        return [(node_id, 1.0 - dist) for node_id, dist in final_results[:top_k]]
 
-    def __len__(self):
+    # ------------------------------------------------------------------
+    # Misc
+    # ------------------------------------------------------------------
+
+    def __len__(self) -> int:
         return self.num_vectors
