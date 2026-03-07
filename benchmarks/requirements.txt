@@ -1,0 +1,20 @@
+# NeuroSeek benchmark dependencies
+# Install with: pip install -r benchmarks/requirements.txt
+
+# The library under test
+neuroseek>=0.1.0
+
+# Embedding model (shared across all vector runners)
+sentence-transformers>=5.0.0
+
+# Vector search competitors
+hnswlib>=0.8.0
+faiss-cpu>=1.7.4
+chromadb>=1.0.0
+
+# Keyword search competitors
+rank-bm25>=0.2.2
+Whoosh>=2.7.4
+
+# Numerical utilities (used by vector runners)
+numpy>=1.24.0

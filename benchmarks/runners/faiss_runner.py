@@ -36,12 +36,29 @@ class FAISSRunner(BaseRunner):
         # FAISS uses sequential 0-based integer IDs; map back to pids
         self._id_to_pid: dict[int, str] = {}
 
-    def build_index(self, passages: list[tuple[str, str]]) -> None:
+    def build_index(
+        self,
+        passages: list[tuple[str, str]],
+        vectors: "np.ndarray | None" = None,
+    ) -> None:
+        """Build the FAISS HNSW index.
+
+        Parameters
+        ----------
+        passages:
+            List of ``(pid, text)`` pairs.
+        vectors:
+            Optional pre-computed embedding matrix (N × dim, float32).
+            When provided the Embedder is not called.
+        """
         pids  = [pid  for pid, _ in passages]
         texts = [text for _, text in passages]
 
-        vectors = self._embedder.encode_batch(texts)
-        matrix = np.array([v.data for v in vectors], dtype=np.float32)
+        if vectors is not None:
+            matrix = vectors.astype(np.float32)
+        else:
+            emb = self._embedder.encode_batch(texts)
+            matrix = np.array([v.data for v in emb], dtype=np.float32)
         matrix = _normalise(matrix)
 
         dim = matrix.shape[1]

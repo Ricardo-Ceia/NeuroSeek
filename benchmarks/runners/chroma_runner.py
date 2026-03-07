@@ -31,7 +31,21 @@ class ChromaRunner(BaseRunner):
         self._embedder = embedder
         self._collection: chromadb.Collection | None = None
 
-    def build_index(self, passages: list[tuple[str, str]]) -> None:
+    def build_index(
+        self,
+        passages: list[tuple[str, str]],
+        vectors: "np.ndarray | None" = None,
+    ) -> None:
+        """Build the ChromaDB in-memory collection.
+
+        Parameters
+        ----------
+        passages:
+            List of ``(pid, text)`` pairs.
+        vectors:
+            Optional pre-computed embedding matrix (N × dim, float32).
+            When provided the Embedder is not called.
+        """
         client = chromadb.EphemeralClient()
         self._collection = client.create_collection(
             name="benchmark",
@@ -41,9 +55,13 @@ class ChromaRunner(BaseRunner):
         pids  = [pid  for pid, _ in passages]
         texts = [text for _, text in passages]
 
-        # Embed in one batch then add to Chroma in chunks
-        vectors = self._embedder.encode_batch(texts)
-        embeddings = [v.data for v in vectors]
+        # Use pre-computed vectors if available; otherwise embed now
+        if vectors is not None:
+            # Pass numpy matrix directly — ChromaDB accepts ndarray
+            embeddings = vectors
+        else:
+            emb = self._embedder.encode_batch(texts)
+            embeddings = [v.data for v in emb]
 
         for start in range(0, len(passages), _BATCH_SIZE):
             end = start + _BATCH_SIZE
