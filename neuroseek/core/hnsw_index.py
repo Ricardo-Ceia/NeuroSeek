@@ -125,6 +125,100 @@ class HNSWIndex:
         if rev is not None:
             rev.discard(src_id)
 
+    def _select_neighbors_heuristic(
+        self,
+        query_np: np.ndarray,
+        candidates: list[tuple[int, float]],
+        M: int,
+        extend_candidates: bool = False,
+        keep_pruned: bool = True,
+    ) -> list[tuple[int, float]]:
+        """HNSW Algorithm 4: heuristic neighbor selection.
+
+        Selects up to M neighbours from *candidates* (list of (node_id, dist)
+        sorted ascending) that collectively cover diverse directions in space,
+        rather than simply taking the M closest.
+
+        A candidate e is kept in the result set R only if it is closer to the
+        query than it is to every already-selected neighbour — i.e. it "adds
+        new coverage".  Pruned candidates are optionally added back at the end
+        to fill remaining slots up to M (keep_pruned=True, default).
+
+        Parameters
+        ----------
+        query_np:
+            Pre-normalised query vector (float32 numpy array).
+        candidates:
+            (node_id, dist_to_query) pairs, sorted ascending by distance.
+        M:
+            Maximum number of neighbours to select.
+        extend_candidates:
+            If True, expand the candidate set with neighbours-of-candidates
+            before selection (useful for upper layers; off by default to keep
+            construction cost down).
+        keep_pruned:
+            If True, pad the result with pruned candidates when |R| < M.
+        """
+        if not candidates:
+            return []
+
+        # Optional candidate extension: add neighbours of candidates.
+        if extend_candidates:
+            extra: dict[int, float] = {}
+            for cid, _ in candidates:
+                cnode = self.id_to_node.get(cid)
+                if cnode is None:
+                    continue
+                for layer_conns in cnode.connections.values():
+                    for nid, _ in layer_conns:
+                        if nid not in extra and nid not in {c for c, _ in candidates}:
+                            row = self._id_to_row.get(nid)
+                            if row is not None:
+                                extra[nid] = self._dist_row(row, query_np)
+            # Merge and re-sort.
+            combined = list(candidates) + list(extra.items())
+            combined.sort(key=lambda x: x[1])
+        else:
+            combined = list(candidates)
+
+        result: list[tuple[int, float]] = []
+        pruned: list[tuple[int, float]] = []
+
+        # Build result rows list incrementally for batch distance checks.
+        result_rows: list[int] = []
+
+        for cid, dist_cq in combined:
+            if len(result) >= M:
+                break
+            row_c = self._id_to_row.get(cid)
+            if row_c is None:
+                continue
+
+            if not result_rows:
+                # First candidate always wins — nothing to compare against.
+                result.append((cid, dist_cq))
+                result_rows.append(row_c)
+                continue
+
+            # Compute distances from candidate c to every already-selected
+            # neighbour in one batched BLAS call.
+            dists_to_result = self._dist_rows_batch(result_rows, self._matrix[row_c])
+            # Keep c only if it is closer to the query than to any result node.
+            if dist_cq < float(dists_to_result.min()):
+                result.append((cid, dist_cq))
+                result_rows.append(row_c)
+            else:
+                pruned.append((cid, dist_cq))
+
+        # Pad with pruned candidates if we still have slots.
+        if keep_pruned:
+            for cid, dist_cq in pruned:
+                if len(result) >= M:
+                    break
+                result.append((cid, dist_cq))
+
+        return result
+
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
@@ -285,14 +379,17 @@ class HNSWIndex:
                 vector, ep, self.efConstruction, layer,
                 exclude_id=id, query_np=query_np,
             )
-            for neighbor_id, dist in neighbors[: self.M]:
+            # Algorithm 4: heuristic selection — diverse neighbours over simple top-M.
+            selected = self._select_neighbors_heuristic(query_np, neighbors, self.M)
+            # Mmax: layer-0 allows 2×M connections (paper §4.1), upper layers use M.
+            mmax = self.M * 2 if layer == 0 else self.M
+            for neighbor_id, dist in selected:
                 neighbor_node = self.id_to_node[neighbor_id]
                 self._add_edge(id, neighbor_id, dist, layer)
-                # Back-connection: only if the neighbor participates at this layer
-                # and hasn't yet reached its M-connection cap.
+                # Back-connection: only if the neighbor participates at this layer.
                 if neighbor_node.layer >= layer:
                     existing = neighbor_node.get_connections(layer)
-                    if len(existing) < self.M:
+                    if len(existing) < mmax:
                         self._add_edge(neighbor_id, id, dist, layer)
                     else:
                         # Replace the farthest back-connection if the new node

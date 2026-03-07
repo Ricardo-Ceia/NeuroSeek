@@ -104,7 +104,7 @@ class TestHNSWRecall(unittest.TestCase):
     DIM = 64
     N = 500
     TOP_K = 10
-    MIN_RECALL = 0.70
+    MIN_RECALL = 0.85
 
     def setUp(self):
         self.rng = random.Random(7)
