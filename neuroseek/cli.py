@@ -312,8 +312,12 @@ def cmd_update(args: argparse.Namespace) -> int:
         print("No index found. Run `neuroseek index <path>` first.", file=sys.stderr)
         return 1
 
-    if not target.is_file():
-        print(f"Error: path is not a file: {str(target)!r}", file=sys.stderr)
+    if not target.exists():
+        print(f"Error: path does not exist: {str(target)!r}", file=sys.stderr)
+        return 1
+
+    if not target.is_dir() and not target.is_file():
+        print(f"Error: path is not a file or directory: {str(target)!r}", file=sys.stderr)
         return 1
 
     manager = _load_manager(index_path)
@@ -326,35 +330,56 @@ def cmd_update(args: argparse.Namespace) -> int:
         )
         return 1
 
-    try:
-        text, file_meta = ingest_file(target)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+    # --- gather (text, metadata) pairs ---
+    if target.is_dir():
+        pairs = ingest_directory(target)
+        if not pairs:
+            print(f"No supported files found in {str(target)!r}.")
+            return 0
+    else:
+        try:
+            pairs = [ingest_file(target)]
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
 
-    filename = file_meta.get("filename", target.name)
+    total_chunks = 0
+    for text, file_meta in pairs:
+        chunks_data = chunk_text(
+            text,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            metadata=file_meta,
+        )
+        chunk_texts = []
+        chunk_metas = []
+        for chunk in chunks_data:
+            chunk_texts.append(chunk.pop("text"))
+            chunk_metas.append(chunk)
 
-    chunks_data = chunk_text(
-        text,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        metadata=file_meta,
-    )
-    chunk_texts = []
-    chunk_metas = []
-    for chunk in chunks_data:
-        chunk_texts.append(chunk.pop("text"))
-        chunk_metas.append(chunk)
+        if not chunk_texts:
+            continue
 
-    if not chunk_texts:
+        filename = file_meta.get("filename", Path(file_meta.get("path", "unknown")).name)
+        count = manager.update_source(filename, namespace, chunk_texts, metadata_list=chunk_metas)
+        total_chunks += count
+
+    if total_chunks == 0:
         print("No text content found to index.")
         return 0
 
-    count = manager.update_source(filename, namespace, chunk_texts, metadata_list=chunk_metas)
     _save_manager(manager, index_path)
-    print(
-        f"Updated {filename!r}: indexed {count} chunk(s) into namespace {namespace!r}."
-    )
+
+    if target.is_dir():
+        print(
+            f"Updated {len(pairs)} file(s): indexed {total_chunks} chunk(s) "
+            f"into namespace {namespace!r}."
+        )
+    else:
+        filename = pairs[0][1].get("filename", target.name)
+        print(
+            f"Updated {filename!r}: indexed {total_chunks} chunk(s) into namespace {namespace!r}."
+        )
     return 0
 
 
@@ -653,7 +678,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "update",
         help="Re-index a file, replacing its existing chunks.",
     )
-    p_update.add_argument("path", metavar="PATH", help="File to re-index.")
+    p_update.add_argument("path", metavar="PATH", help="File or directory to re-index.")
     p_update.add_argument(
         "--namespace",
         metavar="NS",

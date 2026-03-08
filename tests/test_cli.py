@@ -1055,6 +1055,62 @@ class TestCmdUpdate:
         )
         assert args.chunk_size == 64
 
+    def test_update_directory_exit_zero(self, tmp, idx, capsys):
+        """update <dir> should succeed when the dir contains supported files."""
+        # pre_index already indexed doc.txt; now update the whole directory
+        self.f.write_text("refreshed dog content here", encoding="utf-8")
+        code, _, _ = run(["update", str(tmp)], capsys, idx)
+        assert code == 0
+
+    def test_update_directory_prints_file_count(self, tmp, idx, capsys):
+        """update <dir> should report how many files were updated."""
+        write_file(tmp, "extra.txt", "extra document content here for update")
+        run(["index", str(tmp / "extra.txt")], capsys, idx)
+        self.f.write_text("refreshed dog content here", encoding="utf-8")
+        _, out, _ = run(["update", str(tmp)], capsys, idx)
+        assert "file" in out.lower()
+
+    def test_update_directory_replaces_old_content(self, tmp, idx, capsys):
+        """update <dir> should replace old chunks with fresh ones."""
+        self.f.write_text("completely new content about astronomy and stars", encoding="utf-8")
+        run(["update", str(tmp)], capsys, idx)
+        manager = _load_manager(idx)
+        results = manager.search("dogs and puppies", DEFAULT_NAMESPACE, top_k=5)
+        texts = [r["text"] for r in results]
+        assert not any("dogs" in t for t in texts)
+
+    def test_update_directory_new_content_searchable(self, tmp, idx, capsys):
+        """update <dir> should make the new content searchable."""
+        self.f.write_text("quantum entanglement and particle physics", encoding="utf-8")
+        run(["update", str(tmp)], capsys, idx)
+        manager = _load_manager(idx)
+        results = manager.search("quantum physics", DEFAULT_NAMESPACE, top_k=1)
+        assert len(results) == 1
+        assert "quantum" in results[0]["text"].lower()
+
+    def test_update_directory_empty_dir_returns_zero(self, tmp, idx, capsys):
+        """update on an empty directory should exit 0 with a helpful message."""
+        empty_dir = tmp / "empty_subdir"
+        empty_dir.mkdir()
+        code, out, _ = run(["update", str(empty_dir)], capsys, idx)
+        assert code == 0
+        assert "No supported" in out or "nothing" in out.lower()
+
+    def test_update_directory_multiple_files(self, tmp, idx, capsys):
+        """update <dir> should update all files in the directory."""
+        write_file(tmp, "second.txt", "second file original content about oceans")
+        run(["index", str(tmp / "second.txt")], capsys, idx)
+        # Now update both files
+        self.f.write_text("first file new content about mountains", encoding="utf-8")
+        (tmp / "second.txt").write_text("second file new content about deserts", encoding="utf-8")
+        code, out, _ = run(["update", str(tmp)], capsys, idx)
+        assert code == 0
+        manager = _load_manager(idx)
+        r1 = manager.search("mountains", DEFAULT_NAMESPACE, top_k=1)
+        r2 = manager.search("deserts", DEFAULT_NAMESPACE, top_k=1)
+        assert len(r1) == 1
+        assert len(r2) == 1
+
 
 # ---------------------------------------------------------------------------
 # cmd_export
