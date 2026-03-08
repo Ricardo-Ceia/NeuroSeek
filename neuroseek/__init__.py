@@ -12,7 +12,7 @@ from neuroseek.persistence.namespace_manager_persistence import save_namespace_m
 from neuroseek.ingestion.chunker import chunk_text
 from neuroseek.ingestion.ingestor import ingest_file, ingest_directory, SUPPORTED_EXTENSIONS
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     'Vector',
