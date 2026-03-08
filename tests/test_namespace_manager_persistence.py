@@ -122,7 +122,7 @@ class TestSaveLoadRoundTrip(unittest.TestCase):
     def test_auto_id_continues_after_load(self):
         save_namespace_manager(self.mgr, self.path)
         loaded = load_namespace_manager(self.path)
-        existing_ids = set(loaded._namespaces["cities"]._index.id_to_node.keys())
+        existing_ids = set(loaded._namespaces["cities"]._store._store.keys())
         new_id = loaded.add("Tokyo is the capital of Japan", "cities")
         self.assertNotIn(new_id, existing_ids)
 
@@ -328,6 +328,158 @@ class TestPersistenceVersioning(unittest.TestCase):
             assert self.path in str(exc)
         else:
             self.fail("Expected ValueError")
+
+
+class TestHNSWLibBackendPersistence(unittest.TestCase):
+    """Round-trip tests for NamespaceManager persistence with the hnswlib backend."""
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        mgr = NamespaceManager._from_embedder(embedder)
+        # Use _make_engine override with hnswlib backend
+        from neuroseek.search_engine import SearchEngine
+        for ns, text in [
+            ("cities", "Paris is the capital of France"),
+            ("cities", "Berlin is the capital of Germany"),
+            ("science", "quantum entanglement is a strange phenomenon"),
+            ("science", "thermodynamics governs heat and entropy"),
+        ]:
+            engine = mgr._namespaces.get(ns)
+            if engine is None:
+                engine = SearchEngine._from_embedder(
+                    embedder=embedder,
+                    M=mgr.M,
+                    efConstruction=mgr.efConstruction,
+                    backend="hnswlib",
+                )
+                mgr._namespaces[ns] = engine
+            engine.add(text)
+        self.mgr = mgr
+        self.path = _tmp_path()
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+    def test_save_and_load_returns_namespace_manager(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        self.assertIsInstance(loaded, NamespaceManager)
+
+    def test_namespaces_preserved(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        self.assertEqual(
+            sorted(loaded.list_namespaces()),
+            sorted(self.mgr.list_namespaces()),
+        )
+
+    def test_doc_counts_preserved(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        for ns in self.mgr.list_namespaces():
+            self.assertEqual(loaded.namespace_len(ns), self.mgr.namespace_len(ns))
+
+    def test_search_results_match_after_load(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        orig     = self.mgr.search("capital city of Europe", "cities", top_k=2)
+        restored = loaded.search("capital city of Europe", "cities", top_k=2)
+        self.assertEqual(
+            [r["text"] for r in orig],
+            [r["text"] for r in restored],
+        )
+
+    def test_search_text_correct_after_load(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        results = loaded.search("capital of France", "cities", top_k=1)
+        self.assertEqual(results[0]["text"], "Paris is the capital of France")
+
+    def test_namespaces_isolated_after_load(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        science = loaded.search("quantum entanglement", "science", top_k=1)
+        cities  = loaded.search("quantum entanglement", "cities", top_k=1)
+        self.assertEqual(science[0]["text"], "quantum entanglement is a strange phenomenon")
+        self.assertNotEqual(cities[0]["text"], "quantum entanglement is a strange phenomenon")
+
+    def test_backend_is_hnswlib_after_load(self):
+        from neuroseek.core.hnswlib_index import HNSWLibIndex
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        for engine in loaded._namespaces.values():
+            self.assertIsInstance(engine._index, HNSWLibIndex)
+
+    def test_new_doc_addable_after_load(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        loaded.add("Tokyo is the capital of Japan", "cities")
+        results = loaded.search("capital of Japan", "cities", top_k=1)
+        self.assertEqual(results[0]["text"], "Tokyo is the capital of Japan")
+
+    def test_auto_id_continues_after_load(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        existing_ids = set(loaded._namespaces["cities"]._store._store.keys())
+        new_id = loaded.add("Tokyo is the capital of Japan", "cities")
+        self.assertNotIn(new_id, existing_ids)
+
+    def test_empty_manager_with_hnswlib_backend_round_trips(self):
+        empty = NamespaceManager._from_embedder(self.mgr._embedder)
+        save_namespace_manager(empty, self.path)
+        loaded = load_namespace_manager(self.path)
+        self.assertEqual(loaded.list_namespaces(), [])
+
+    def test_backend_key_written_to_payload(self):
+        save_namespace_manager(self.mgr, self.path)
+        with open(self.path, "rb") as fh:
+            payload = pickle.load(fh)
+        for ns_payload in payload["namespaces"].values():
+            self.assertIn("backend", ns_payload)
+            self.assertEqual(ns_payload["backend"], "hnswlib")
+
+
+class TestHNSWBackendExplicit(unittest.TestCase):
+    """Ensure the hnsw backend still round-trips correctly with the new schema."""
+
+    @pytest.fixture(autouse=True)
+    def _inject(self, embedder: Embedder) -> None:
+        from neuroseek.search_engine import SearchEngine
+        mgr = NamespaceManager._from_embedder(embedder)
+        engine = SearchEngine._from_embedder(
+            embedder=embedder,
+            M=mgr.M,
+            efConstruction=mgr.efConstruction,
+            backend="hnsw",
+        )
+        engine.add("Paris is the capital of France")
+        engine.add("Berlin is the capital of Germany")
+        mgr._namespaces["cities"] = engine
+        self.mgr = mgr
+        self.path = _tmp_path()
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+    def test_hnsw_round_trip_search(self):
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        results = loaded.search("capital of France", "cities", top_k=1)
+        self.assertEqual(results[0]["text"], "Paris is the capital of France")
+
+    def test_backend_key_is_hnsw_in_payload(self):
+        save_namespace_manager(self.mgr, self.path)
+        with open(self.path, "rb") as fh:
+            payload = pickle.load(fh)
+        self.assertEqual(payload["namespaces"]["cities"]["backend"], "hnsw")
+
+    def test_backend_is_hnsw_index_after_load(self):
+        from neuroseek.core.hnsw_index import HNSWIndex
+        save_namespace_manager(self.mgr, self.path)
+        loaded = load_namespace_manager(self.path)
+        self.assertIsInstance(loaded._namespaces["cities"]._index, HNSWIndex)
 
 
 if __name__ == "__main__":

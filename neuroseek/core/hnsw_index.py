@@ -37,6 +37,51 @@ class HNSWIndex:
         self._reverse_adj: dict[int, set[int]] = {}
 
     # ------------------------------------------------------------------
+    # Persistence helpers
+    # ------------------------------------------------------------------
+
+    def _rebuild_matrix(self) -> None:
+        """Rebuild transient numpy matrix state from the pickled ``id_to_node`` dict.
+
+        Called by the persistence layer after restoring ``id_to_node`` from a
+        pickle file.  The matrix, row-mapping dicts, and reverse-adjacency index
+        are not pickled directly; they are reconstructed here so that all search
+        and distance operations work correctly after load.
+        """
+        if not self.id_to_node:
+            return  # empty index — nothing to rebuild
+
+        # Determine dimension from the first node's vector.
+        first_node = next(iter(self.id_to_node.values()))
+        dim = len(first_node.vector.data)
+        self._dim = dim
+
+        n = len(self.id_to_node)
+        capacity = max(_INITIAL_CAPACITY, n)
+        self._capacity = capacity
+        self._matrix = np.empty((capacity, dim), dtype=np.float32)
+        self._id_to_row = {}
+        self._row_to_id = {}
+        self._free_rows = []
+        self._reverse_adj = {}
+
+        for row, (node_id, node) in enumerate(self.id_to_node.items()):
+            arr = np.array(node.vector.data, dtype=np.float32)
+            norm = np.linalg.norm(arr)
+            if norm > 0:
+                arr = arr / norm
+            self._matrix[row] = arr
+            self._id_to_row[node_id] = row
+            self._row_to_id[row] = node_id
+            self._reverse_adj[node_id] = set()
+
+        # Rebuild reverse adjacency from stored connection lists.
+        for src_id, node in self.id_to_node.items():
+            for layer_connections in node.connections.values():
+                for dst_id, _dist in layer_connections:
+                    self._reverse_adj.setdefault(dst_id, set()).add(src_id)
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

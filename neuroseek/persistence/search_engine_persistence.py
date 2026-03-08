@@ -183,12 +183,15 @@ def load_search_engine(path: str | Path) -> SearchEngine:
     else:
         # Pure-Python HNSWIndex
         idx = engine._index
-        idx.maxLayers = payload["hnsw_maxLayers"]
-        idx.layers = payload["hnsw_layers"]
-        idx.id_to_node = payload["hnsw_id_to_node"]
+        idx.maxLayers   = payload["hnsw_maxLayers"]
+        idx.layers      = payload["hnsw_layers"]
+        idx.id_to_node  = payload["hnsw_id_to_node"]
         idx.num_vectors = payload["hnsw_num_vectors"]
-        idx._next_id = payload["hnsw_next_id"]
-        ep_id = payload["hnsw_entry_point_id"]
+        idx._next_id    = payload["hnsw_next_id"]
+        ep_id           = payload["hnsw_entry_point_id"]
         idx.entry_point = idx.id_to_node[ep_id] if ep_id is not None else None
+        # Rebuild the transient numpy matrix and row-mapping dicts from the
+        # restored id_to_node.  These are not pickled and must be reconstructed.
+        idx._rebuild_matrix()
 
     return engine
