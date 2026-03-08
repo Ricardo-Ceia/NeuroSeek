@@ -313,6 +313,7 @@ class NamespaceManager:
         namespace: str,
         top_k: int = 5,
         filter: Optional[dict] = None,  # noqa: A002
+        ef_search: Optional[int] = None,
     ) -> list[dict]:
         """Search *namespace* for *query*.
 
@@ -327,6 +328,10 @@ class NamespaceManager:
         filter:
             Optional metadata filter dict. Only documents whose metadata
             contains all key-value pairs in *filter* are returned.
+        ef_search:
+            Optional override for the HNSW search beam width.  Higher values
+            improve recall at the cost of higher latency.  ``None`` uses the
+            index default.
 
         Returns
         -------
@@ -340,7 +345,7 @@ class NamespaceManager:
             If *namespace* does not exist.
         """
         engine = self._get_namespace(namespace)
-        return engine.search(query, top_k=top_k, filter=filter)
+        return engine.search(query, top_k=top_k, filter=filter, ef_search=ef_search)
 
     # ------------------------------------------------------------------
     # Aggregate info

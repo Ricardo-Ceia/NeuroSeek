@@ -457,6 +457,31 @@ class TestCmdSearch:
         assert code == 0
         assert out.strip() != ""
 
+    def test_ef_search_flag_accepted(self, idx, capsys):
+        """--ef-search flag should be accepted without error."""
+        code, _, _ = run(["search", "loyal dog", "--ef-search", "200"], capsys, idx)
+        assert code == 0
+
+    def test_ef_search_returns_results(self, idx, capsys):
+        """--ef-search flag should return results just like a normal search."""
+        _, out, _ = run(["search", "stars", "--ef-search", "100"], capsys, idx)
+        result_lines = [l for l in out.splitlines() if l.startswith("[")]
+        assert len(result_lines) >= 1
+
+    def test_ef_search_default_is_none(self):
+        """--ef-search should default to None (index uses its own default)."""
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "search", "query"])
+        assert args.ef_search is None
+
+    def test_ef_search_custom_value_parsed(self):
+        """--ef-search should parse an integer value correctly."""
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "search", "query", "--ef-search", "300"]
+        )
+        assert args.ef_search == 300
+
 
 # ---------------------------------------------------------------------------
 # cmd_list

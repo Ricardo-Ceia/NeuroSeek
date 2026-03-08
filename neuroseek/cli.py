@@ -173,6 +173,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     namespace = args.namespace
     top_k = args.top_k
     query = args.query
+    ef_search = args.ef_search  # int or None
 
     if not index_path.exists():
         print("No index found. Run `neuroseek index <path>` first.", file=sys.stderr)
@@ -188,7 +189,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         )
         return 1
 
-    results = manager.search(query, namespace=namespace, top_k=top_k)
+    results = manager.search(query, namespace=namespace, top_k=top_k, ef_search=ef_search)
 
     if not results:
         print("No results found.")
@@ -548,6 +549,17 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_TOP_K,
         help=f"Number of results to return (default: {DEFAULT_TOP_K}).",
+    )
+    p_search.add_argument(
+        "--ef-search",
+        metavar="N",
+        type=int,
+        default=None,
+        dest="ef_search",
+        help=(
+            "HNSW search beam width. Higher values improve recall at the cost "
+            "of latency. Defaults to the index's efConstruction value."
+        ),
     )
     p_search.set_defaults(func=cmd_search)
 
