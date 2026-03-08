@@ -240,10 +240,12 @@ def main() -> None:
     results = []
     for runner in runners:
         print(f"Benchmarking {runner.name} ...", flush=True)
-        # Pass pre-computed vectors to vector runners to avoid re-embedding
-        use_vectors = passage_vectors if runner.name in {
-            "NeuroSeek", "hnswlib", "FAISS", "ChromaDB"
-        } else None
+        # Pass pre-computed vectors to vector runners to avoid re-embedding.
+        # runner.name values: "NeuroSeek", "hnswlib", "FAISS", "ChromaDB".
+        # args.runners uses lowercase, so _VECTOR_RUNNER_NAMES is also lowercase —
+        # but runner.name is the canonical display name set on each runner class.
+        _VECTOR_RUNNER_DISPLAY_NAMES = {"NeuroSeek", "hnswlib", "FAISS", "ChromaDB"}
+        use_vectors = passage_vectors if runner.name in _VECTOR_RUNNER_DISPLAY_NAMES else None
         try:
             result = _run_one(runner, passages, dataset, args.top_k, vectors=use_vectors)
             results.append(result)
