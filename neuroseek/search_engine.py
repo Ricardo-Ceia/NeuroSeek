@@ -393,6 +393,7 @@ class SearchEngine:
         query: str,
         top_k: int = 5,
         filter: Optional[dict] = None,  # noqa: A002
+        ef_search: Optional[int] = None,
     ) -> list[dict]:
         """Return the *top_k* most semantically similar documents to *query*.
 
@@ -406,6 +407,10 @@ class SearchEngine:
             Optional metadata filter. Only documents whose metadata contains
             all key-value pairs in *filter* are returned. ``None`` means no
             filtering.
+        ef_search:
+            HNSW search beam width passed to the underlying index.  Higher
+            values improve recall at the cost of latency.  ``None`` uses the
+            index default (automatically raised to at least *top_k*).
 
         Returns
         -------
@@ -420,19 +425,32 @@ class SearchEngine:
         Raises
         ------
         TypeError
-            If *query* is not a str, *top_k* is not an int, or *filter* is
-            not a dict.
+            If *query* is not a str, *top_k* is not an int, *filter* is
+            not a dict, or *ef_search* is not an int.
         ValueError
-            If *query* is empty/whitespace or *top_k* < 1.
+            If *query* is empty/whitespace, *top_k* < 1, or *ef_search* < 1.
         """
+        if ef_search is not None:
+            if not isinstance(ef_search, int):
+                raise TypeError(
+                    f"ef_search must be an int or None, got {type(ef_search).__name__}"
+                )
+            if ef_search < 1:
+                raise ValueError(f"ef_search must be >= 1, got {ef_search}")
+
         _validate_metadata(filter)
 
         query_vector = self._embedder.encode(query)
 
+        # Build kwargs for the underlying index.search call
+        search_kwargs: dict = {}
+        if ef_search is not None:
+            search_kwargs["ef"] = ef_search
+
         if filter:
             # Fetch more candidates so we have enough after filtering
             fetch_k = top_k * _FILTER_OVERSAMPLE
-            raw_results = self._index.search(query_vector, top_k=fetch_k)
+            raw_results = self._index.search(query_vector, top_k=fetch_k, **search_kwargs)
             results = []
             for doc_id, score in raw_results:
                 if self._store.matches_filter(doc_id, filter):
@@ -446,7 +464,7 @@ class SearchEngine:
                         break
             return results
         else:
-            raw_results = self._index.search(query_vector, top_k=top_k)
+            raw_results = self._index.search(query_vector, top_k=top_k, **search_kwargs)
             return [
                 {
                     "id": doc_id,
