@@ -1,6 +1,6 @@
 # NeuroSeek
 
-NeuroSeek is a semantic search engine for your own content. You give it text — from files, directories, or strings — and it finds the passages that mean what you're looking for, not just the ones that share your exact words. It runs entirely locally, stores everything in a single file, and requires no server. The core is ~1 100 lines of pure Python built on an HNSW graph and sentence-transformers.
+NeuroSeek is a semantic search engine for your own content. You give it text — from files, directories, or strings — and it finds the passages that mean what you're looking for, not just the ones that share your exact words. It runs entirely locally, stores everything in a single file, and requires no server. The core is ~1 100 lines of pure Python built on an HNSW graph and sentence-transformers. For large corpora, install `neuroseek[fast]` to swap the pure-Python index for a C++ hnswlib backend (~120× faster build time) with one line of code.
 
 ```python
 from neuroseek import SearchEngine
@@ -28,10 +28,34 @@ The query "how do cells produce energy?" never appears in any document. NeuroSee
 ## Installation
 
 ```bash
-pip install neuroseek
+pip install neuroseek          # pure Python — works everywhere
+pip install neuroseek[fast]    # + hnswlib C++ backend (~120x faster build)
 ```
 
 Requires Python 3.10+. The first run downloads the embedding model (~90 MB, cached automatically by Hugging Face).
+
+---
+
+## Fast backend
+
+With `neuroseek[fast]` installed, pass `backend="hnswlib"` (or let `backend="auto"` pick it automatically):
+
+```python
+engine = SearchEngine(backend="hnswlib")  # C++ HNSW, ~120x faster indexing
+engine = SearchEngine(backend="hnsw")     # pure Python (default without [fast])
+engine = SearchEngine(backend="auto")     # hnswlib if available, else hnsw
+```
+
+`backend="auto"` is the default — if `hnswlib` is installed it is used automatically; otherwise the pure-Python implementation is used without any code change.
+
+Search quality is identical. The `[fast]` extra only affects index-build time.
+
+You can also tune search recall vs. latency with `ef_search`:
+
+```python
+results = engine.search("how do cells produce energy?", ef_search=200)
+# higher ef_search → better recall, slightly higher latency
+```
 
 ---
 
