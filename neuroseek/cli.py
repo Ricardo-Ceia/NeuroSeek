@@ -23,6 +23,7 @@ Override with the NEUROSEEK_INDEX environment variable or --index flag.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -174,6 +175,14 @@ def cmd_search(args: argparse.Namespace) -> int:
     top_k = args.top_k
     query = args.query
     ef_search = args.ef_search  # int or None
+    filter_str = getattr(args, "filter", None)
+    metadata_filter: dict | None = None
+    if filter_str:
+        try:
+            metadata_filter = json.loads(filter_str)
+        except json.JSONDecodeError as exc:
+            print(f"Error: --filter is not valid JSON: {exc}", file=sys.stderr)
+            return 1
 
     if not index_path.exists():
         print("No index found. Run `neuroseek index <path>` first.", file=sys.stderr)
@@ -189,7 +198,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         )
         return 1
 
-    results = manager.search(query, namespace=namespace, top_k=top_k, ef_search=ef_search)
+    results = manager.search(query, namespace=namespace, top_k=top_k, ef_search=ef_search, filter=metadata_filter)
 
     if not results:
         print("No results found.")
@@ -235,10 +244,20 @@ def cmd_delete(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # ---- parse --filter (only used with --query) ----
+    filter_str = getattr(args, "filter", None)
+    metadata_filter: dict | None = None
+    if filter_str:
+        try:
+            metadata_filter = json.loads(filter_str)
+        except json.JSONDecodeError as exc:
+            print(f"Error: --filter is not valid JSON: {exc}", file=sys.stderr)
+            return 1
+
     # ---- delete by query ----
     if args.query:
         top_k = args.top_k
-        deleted = manager.delete_by_query(args.query, namespace=namespace, top_k=top_k)
+        deleted = manager.delete_by_query(args.query, namespace=namespace, top_k=top_k, filter=metadata_filter)
 
         if not deleted:
             print(
@@ -561,6 +580,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "of latency. Defaults to the index's efConstruction value."
         ),
     )
+    p_search.add_argument(
+        "--filter",
+        metavar="JSON",
+        default=None,
+        dest="filter",
+        help=(
+            "Metadata filter as a JSON object (e.g. '{\"category\": \"science\"}')."
+            " Only chunks whose metadata contains all key-value pairs are returned."
+        ),
+    )
     p_search.set_defaults(func=cmd_search)
 
     # -- list --
@@ -606,6 +635,16 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="NS",
         default=DEFAULT_NAMESPACE,
         help=f"Namespace to delete from (default: {DEFAULT_NAMESPACE!r}).",
+    )
+    p_delete.add_argument(
+        "--filter",
+        metavar="JSON",
+        default=None,
+        dest="filter",
+        help=(
+            "Metadata filter as a JSON object (e.g. '{\"category\": \"science\"}')."
+            " Only chunks whose metadata matches are considered for deletion (only with --query)."
+        ),
     )
     p_delete.set_defaults(func=cmd_delete)
 

@@ -482,6 +482,66 @@ class TestCmdSearch:
         )
         assert args.ef_search == 300
 
+    def test_filter_flag_accepted(self, tmp, idx, capsys):
+        """--filter flag should be accepted without error."""
+        # Index docs with distinct category metadata via direct manager manipulation
+        f = write_file(tmp, "science.txt", "quantum physics and relativity")
+        run(["index", str(f)], capsys, idx)
+        code, _, _ = run(
+            ["search", "quantum", "--filter", '{"filename": "science.txt"}'],
+            capsys,
+            idx,
+        )
+        assert code == 0
+
+    def test_filter_narrows_results(self, tmp, idx, capsys):
+        """--filter should return only chunks matching the metadata constraint."""
+        # The pre_index fixture indexed animals.txt and space.txt.
+        # Filtering by filename should narrow results to that file only.
+        _, out, _ = run(
+            ["search", "the", "--filter", '{"filename": "animals.txt"}'],
+            capsys,
+            idx,
+        )
+        # Every result line should mention animals.txt
+        result_lines = [l for l in out.splitlines() if l.startswith("[")]
+        assert len(result_lines) >= 1
+        for line in result_lines:
+            assert "animals.txt" in line
+
+    def test_filter_no_match_prints_no_results(self, idx, capsys):
+        """--filter that matches nothing should print 'No results found'."""
+        _, out, _ = run(
+            ["search", "the", "--filter", '{"filename": "nonexistent_xyz.txt"}'],
+            capsys,
+            idx,
+        )
+        assert "No results" in out
+
+    def test_filter_invalid_json_exit_one(self, idx, capsys):
+        """--filter with invalid JSON should exit 1 with a clear error message."""
+        code, _, err = run(
+            ["search", "the", "--filter", "{bad json}"],
+            capsys,
+            idx,
+        )
+        assert code == 1
+        assert "JSON" in err or "json" in err.lower()
+
+    def test_filter_default_is_none(self):
+        """--filter should default to None."""
+        parser = _build_parser()
+        args = parser.parse_args(["--index", "/tmp/x.pkl", "search", "query"])
+        assert args.filter is None
+
+    def test_filter_value_parsed(self):
+        """--filter should store the raw JSON string."""
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "search", "query", "--filter", '{"k": "v"}']
+        )
+        assert args.filter == '{"k": "v"}'
+
 
 # ---------------------------------------------------------------------------
 # cmd_list
@@ -751,6 +811,61 @@ class TestCmdDeleteByQuery:
             ["--index", "/tmp/x.pkl", "delete", "--query", "dogs", "--dry-run"]
         )
         assert args.dry_run is True
+
+    def test_delete_filter_default_is_none(self):
+        """--filter on delete should default to None."""
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "delete", "--query", "dogs"]
+        )
+        assert args.filter is None
+
+    def test_delete_filter_value_parsed(self):
+        """--filter on delete should store the raw JSON string."""
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["--index", "/tmp/x.pkl", "delete", "--query", "dogs", "--filter", '{"k": "v"}']
+        )
+        assert args.filter == '{"k": "v"}'
+
+    def test_delete_filter_invalid_json_exit_one(self, idx, capsys):
+        """--filter with invalid JSON should exit 1 with a clear error message."""
+        code, _, err = run(
+            ["delete", "--query", "dogs", "--filter", "{bad json}"],
+            capsys,
+            idx,
+        )
+        assert code == 1
+        assert "JSON" in err or "json" in err.lower()
+
+    def test_delete_filter_narrows_deletion(self, tmp, idx, capsys):
+        """--filter should limit deletion to chunks matching the metadata constraint.
+
+        Strategy: query a very generic term ("the") with --filter locked to dogs.txt.
+        Then verify the index still contains space.txt chunks (they were not touched).
+        """
+        count_before = _load_manager(idx).namespace_len(DEFAULT_NAMESPACE)
+        # Delete with filter restricting to dogs.txt only
+        run(
+            ["delete", "--query", "the", "--filter", '{"filename": "dogs.txt"}'],
+            capsys,
+            idx,
+        )
+        # After deletion, space.txt chunks should still be there
+        manager = _load_manager(idx)
+        results = manager.search("black holes", DEFAULT_NAMESPACE, top_k=5)
+        sources = {r["metadata"].get("filename", "") for r in results}
+        assert any("space.txt" in s for s in sources), "space.txt chunks were unexpectedly deleted"
+
+    def test_delete_filter_matching_file_deletes(self, idx, capsys):
+        """--filter matching the correct file should allow deletion."""
+        code, out, _ = run(
+            ["delete", "--query", "dogs", "--filter", '{"filename": "dogs.txt"}'],
+            capsys,
+            idx,
+        )
+        assert code == 0
+        assert "Deleted" in out
 
 
 # ---------------------------------------------------------------------------
