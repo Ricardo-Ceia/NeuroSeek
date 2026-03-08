@@ -112,7 +112,7 @@ class TestSaveLoadRoundTrip(unittest.TestCase):
     def test_auto_id_continues_after_load(self):
         save_search_engine(self._shared_engine, self.path)
         loaded = load_search_engine(self.path)
-        existing_ids = set(loaded._index.id_to_node.keys())
+        existing_ids = set(loaded._store._store.keys())
         new_id = loaded.add("a brand new document")
         self.assertNotIn(new_id, existing_ids)
 

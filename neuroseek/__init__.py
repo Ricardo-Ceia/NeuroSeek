@@ -2,6 +2,7 @@ from neuroseek.core.vector import Vector
 from neuroseek.core.index import Index
 from neuroseek.core.hnsw_index import HNSWIndex
 from neuroseek.core.hnsw_node import HNSWNode
+from neuroseek.core.hnswlib_index import HNSWLibIndex
 from neuroseek.embedder import Embedder
 from neuroseek.document_store import DocumentStore
 from neuroseek.search_engine import SearchEngine
@@ -17,6 +18,7 @@ __all__ = [
     'Vector',
     'Index',
     'HNSWIndex',
+    'HNSWLibIndex',
     'HNSWNode',
     'Embedder',
     'DocumentStore',

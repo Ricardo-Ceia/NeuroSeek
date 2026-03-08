@@ -3,12 +3,22 @@ SearchEngine — high-level semantic search over raw text documents.
 
 Ties together:
 - ``Embedder``      — converts text → Vector
-- ``HNSWIndex``     — approximate nearest-neighbour index over Vectors
+- ``HNSWIndex`` / ``HNSWLibIndex`` — approximate nearest-neighbour index
 - ``DocumentStore`` — maps integer IDs → raw text + metadata
 
-The same integer ID is used in both the ``HNSWIndex`` and the
-``DocumentStore``, so every search result can be enriched with the original
-text and metadata without a secondary lookup table.
+The same integer ID is used in both the index and the ``DocumentStore``,
+so every search result can be enriched with the original text and metadata
+without a secondary lookup table.
+
+Backend selection
+-----------------
+Pass ``backend`` to choose the index implementation:
+
+- ``"auto"``    — use ``HNSWLibIndex`` (hnswlib C++) if available, else
+                  fall back to pure-Python ``HNSWIndex``.  Default.
+- ``"hnswlib"`` — always use ``HNSWLibIndex``; raises ``ImportError`` if
+                  hnswlib is not installed.
+- ``"hnsw"``    — always use the pure-Python ``HNSWIndex``.
 """
 
 from __future__ import annotations
@@ -19,10 +29,36 @@ from neuroseek.embedder import Embedder, DEFAULT_MODEL
 from neuroseek.core.hnsw_index import HNSWIndex
 from neuroseek.document_store import DocumentStore, _validate_metadata
 
+try:
+    from neuroseek.core.hnswlib_index import HNSWLibIndex as _HNSWLibIndex
+    _HNSWLIB_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _HNSWLibIndex = None  # type: ignore[assignment,misc]
+    _HNSWLIB_AVAILABLE = False
+
+_VALID_BACKENDS = {"auto", "hnswlib", "hnsw"}
+
 # How many extra candidates to fetch from HNSW when a metadata filter is
 # active.  We fetch top_k * _FILTER_OVERSAMPLE results then trim to top_k
 # after filtering.  If fewer than top_k pass the filter we return what we have.
 _FILTER_OVERSAMPLE = 10
+
+
+def _make_index(backend: str, M: int, efConstruction: int):
+    """Return the correct index instance for *backend*."""
+    if backend == "hnswlib":
+        if not _HNSWLIB_AVAILABLE:
+            raise ImportError(
+                "hnswlib is required for backend='hnswlib'.\n"
+                "Install it with:  pip install neuroseek[fast]"
+            )
+        return _HNSWLibIndex(M=M, efConstruction=efConstruction)
+    if backend == "hnsw":
+        return HNSWIndex(M=M, efConstruction=efConstruction)
+    # "auto"
+    if _HNSWLIB_AVAILABLE:
+        return _HNSWLibIndex(M=M, efConstruction=efConstruction)
+    return HNSWIndex(M=M, efConstruction=efConstruction)
 
 
 class SearchEngine:
@@ -39,6 +75,9 @@ class SearchEngine:
     efConstruction:
         HNSW ``efConstruction`` parameter — search width during graph construction.
         Higher values improve recall at the cost of index-build time.
+    backend:
+        Which index implementation to use.  One of ``"auto"`` (default),
+        ``"hnswlib"``, or ``"hnsw"``.  See module docstring for details.
     """
 
     def __init__(
@@ -46,6 +85,7 @@ class SearchEngine:
         model_name: str = DEFAULT_MODEL,
         M: int = 16,
         efConstruction: int = 200,
+        backend: str = "auto",
     ) -> None:
         if not isinstance(model_name, str):
             raise TypeError(
@@ -63,13 +103,20 @@ class SearchEngine:
             )
         if efConstruction < 1:
             raise ValueError(f"efConstruction must be >= 1, got {efConstruction}")
+        if not isinstance(backend, str):
+            raise TypeError(f"backend must be a str, got {type(backend).__name__}")
+        if backend not in _VALID_BACKENDS:
+            raise ValueError(
+                f"backend must be one of {sorted(_VALID_BACKENDS)}, got {backend!r}"
+            )
 
         self.model_name = model_name
         self.M = M
         self.efConstruction = efConstruction
+        self.backend = backend
 
         self._embedder = Embedder(model_name)
-        self._index = HNSWIndex(M=M, efConstruction=efConstruction)
+        self._index = _make_index(backend, M, efConstruction)
         self._store = DocumentStore()
 
     @classmethod
@@ -78,18 +125,24 @@ class SearchEngine:
         embedder: Embedder,
         M: int = 16,
         efConstruction: int = 200,
+        backend: str = "auto",
     ) -> "SearchEngine":
         """Create a SearchEngine that reuses an already-loaded *embedder*.
 
         This avoids re-loading the model when many engines share the same
         model (e.g. inside NamespaceManager).  For internal use only.
         """
+        if backend not in _VALID_BACKENDS:
+            raise ValueError(
+                f"backend must be one of {sorted(_VALID_BACKENDS)}, got {backend!r}"
+            )
         instance = object.__new__(cls)
         instance.model_name = embedder.model_name
         instance.M = M
         instance.efConstruction = efConstruction
+        instance.backend = backend
         instance._embedder = embedder
-        instance._index = HNSWIndex(M=M, efConstruction=efConstruction)
+        instance._index = _make_index(backend, M, efConstruction)
         instance._store = DocumentStore()
         return instance
 
